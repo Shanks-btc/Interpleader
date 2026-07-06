@@ -1,15 +1,19 @@
-{
+﻿{
   "name": "valiquo",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --experimental-transform-types --no-warnings --env-file=.env src/server.ts"
+    "start": "node --experimental-transform-types --no-warnings --env-file-if-exists=.env src/server.ts"
   },
   "dependencies": {
     "@circle-fin/x402-batching": "^3.2.0",
     "@x402/core": "^2.17.0",
     "@x402/evm": "^2.17.0",
+    "cors": "^2.8.6",
     "express": "^4.21.0",
     "viem": "^2.47.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19"
   }
 }
