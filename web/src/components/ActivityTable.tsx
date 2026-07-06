@@ -17,7 +17,7 @@ export default function ActivityTable({ rows }: { rows: ActivityRecord[] }) {
 
   return (
     <div className="w-full min-w-0 overflow-x-auto rounded-2xl border border-subtle bg-surface-gradient shadow-glow">
-      <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+      <table className="w-full min-w-[680px] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-subtle text-xs uppercase tracking-wide text-ink-label">
             <th className="px-4 py-3 font-medium">Timestamp</th>
@@ -25,6 +25,7 @@ export default function ActivityTable({ rows }: { rows: ActivityRecord[] }) {
             <th className="px-4 py-3 font-medium">Decision</th>
             <th className="px-4 py-3 font-medium">Agreed price</th>
             <th className="px-4 py-3 font-medium">Round</th>
+            <th className="px-4 py-3 font-medium">Payer</th>
           </tr>
         </thead>
         <tbody>
@@ -53,6 +54,21 @@ export default function ActivityTable({ rows }: { rows: ActivityRecord[] }) {
                 {row.agreedPrice !== null ? `$${row.agreedPrice}` : "—"}
               </td>
               <td className="whitespace-nowrap px-4 py-3 tabular-nums text-ink-body">{row.round}</td>
+              <td className="whitespace-nowrap px-4 py-3">
+                {row.payerAddress ? (
+                  <a
+                    href={`https://testnet.arcscan.app/address/${row.payerAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={row.payerAddress}
+                    className="text-xs font-medium text-accent-light underline underline-offset-2 transition-colors hover:text-ink-heading"
+                  >
+                    Verify →
+                  </a>
+                ) : (
+                  <span className="text-xs text-ink-label">—</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

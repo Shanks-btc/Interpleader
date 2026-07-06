@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { payWithWallet } from "@/lib/walletPay";
 
 const QUOTE_URL =
   process.env.NEXT_PUBLIC_QUOTE_API_URL ?? "http://localhost:3000/quote";
+const API_ORIGIN = new URL(QUOTE_URL).origin;
 
 const TOOLS = [
   { id: "get_btc_cycle_regime", label: "BTC Cycle Regime" },
@@ -37,6 +39,8 @@ type QuoteResponse = {
   agreedPrice?: number;
   negotiationId?: string;
   round?: number;
+  quoteId?: string;
+  payUrl?: string;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,10 +54,12 @@ export default function NegotiationSection() {
     "$ valiquo — waiting for a proposal...",
   ]);
   const [pending, setPending] = useState(false);
-  const [payState, setPayState] = useState<"idle" | "ready" | "paying" | "settled">(
+  const [payState, setPayState] = useState<"idle" | "ready" | "paying" | "settled" | "error">(
     "idle"
   );
   const [agreedPrice, setAgreedPrice] = useState<number | null>(null);
+  const [payUrl, setPayUrl] = useState<string | null>(null);
+  const [payerAddress, setPayerAddress] = useState<string | null>(null);
 
   async function appendLine(text: string) {
     setLines((prev) => [...prev, text]);
@@ -69,6 +75,8 @@ export default function NegotiationSection() {
     setPending(true);
     setPayState("idle");
     setAgreedPrice(null);
+    setPayUrl(null);
+    setPayerAddress(null);
     setLines([`$ valiquo quote ${selectedTool} --price ${startPrice}`]);
 
     let currentPrice = startPrice;
@@ -120,6 +128,7 @@ export default function NegotiationSection() {
       if (json.decision === "accept" && typeof json.agreedPrice === "number") {
         await appendLine(`> Accepted at $${json.agreedPrice} — ${json.reason}`);
         setAgreedPrice(json.agreedPrice);
+        setPayUrl(json.payUrl ?? null);
         setPayState("ready");
         setPending(false);
         return;
@@ -141,13 +150,26 @@ export default function NegotiationSection() {
     await runNegotiation(tool, parsed);
   }
 
-  // Wallet signing is intentionally stubbed for this phase — negotiation UI
-  // and responsiveness come first, real Gateway payment lands later.
   async function handlePay() {
+    if (!payUrl) return;
     setPayState("paying");
-    await appendLine("> Paying via Gateway...");
-    await appendLine("> Settled.");
-    setPayState("settled");
+    await appendLine("> Requesting wallet connection...");
+
+    try {
+      const fullPayUrl = payUrl.startsWith("http") ? payUrl : `${API_ORIGIN}${payUrl}`;
+      await appendLine("> Building and signing payment authorization (EIP-712)...");
+      const result = await payWithWallet(fullPayUrl);
+      await appendLine("> Payment verified and settled on Arc Testnet.");
+      if (result.payerAddress) {
+        setPayerAddress(result.payerAddress);
+        await appendLine(`> Payer: ${result.payerAddress}`);
+      }
+      await appendLine(`> Data: ${JSON.stringify(result.data)}`);
+      setPayState("settled");
+    } catch (err: any) {
+      await appendLine(`> Payment failed — ${err?.message ?? "unknown error"}`);
+      setPayState("error");
+    }
   }
 
   return (
@@ -271,13 +293,25 @@ export default function NegotiationSection() {
               <button
                 type="button"
                 onClick={handlePay}
-                disabled={payState !== "ready"}
+                disabled={payState === "paying" || payState === "settled"}
                 className="w-full rounded-xl bg-success px-6 py-3 text-sm font-semibold text-[#05060a] transition-opacity disabled:opacity-60"
               >
-                {payState === "ready" && `Pay $${agreedPrice}`}
-                {payState === "paying" && "Paying..."}
+                {payState === "ready" && `Pay $${agreedPrice} with wallet`}
+                {payState === "paying" && "Confirm in wallet..."}
                 {payState === "settled" && "Settled ✓"}
+                {payState === "error" && "Retry payment"}
               </button>
+            )}
+
+            {payState === "settled" && payerAddress && (
+              <a
+                href={`https://testnet.arcscan.app/address/${payerAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full min-w-0 truncate rounded-xl border border-subtle px-4 py-2 text-center text-xs font-medium text-ink-heading underline underline-offset-2 transition-colors hover:border-strong"
+              >
+                Verify payment on Arcscan →
+              </a>
             )}
           </div>
         </div>

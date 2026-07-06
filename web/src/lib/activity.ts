@@ -17,6 +17,7 @@ export interface ActivityRecord {
   agreedPrice: number | null;
   createdAt: string;
   state: "OPEN" | "PROCESSING" | "FULFILLED" | null;
+  payerAddress: string | null;
 }
 
 // Server-side fetch (runs on the Next.js server, not in the browser) so this

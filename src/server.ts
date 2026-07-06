@@ -15,8 +15,11 @@ app.use(express.json());
 // Allows the web/ frontend (localhost:3001, later its production domain) to
 // call this API directly from the browser. Wide open for local development -
 // restrict this to the actual production frontend origin before public
-// deployment.
-app.use(cors());
+// deployment. exposedHeaders is required so browser JS can actually read
+// these two custom response headers via fetch's Response.headers - without
+// it the request succeeds but the headers are invisible to client code,
+// even same-origin-looking code, per the CORS spec's default header allowlist.
+app.use(cors({ exposedHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE"] }));
 
 const SELLER_ADDRESS = process.env.SELLER_ADDRESS as `0x${string}` | undefined;
 
@@ -80,6 +83,10 @@ interface Quote {
   // failing after retries - a "paid, undelivered" record, kept visible
   // rather than silently dropped.
   fulfillmentFailure?: string;
+  // The real payer address from the verified/settled Gateway payment
+  // (req.payment.payer, per @circle-fin/x402-batching's PaymentRequest
+  // type). Only ever set once payment has actually landed.
+  payerAddress?: string;
 }
 const quotes = new Map<string, Quote>();
 
@@ -228,6 +235,9 @@ app.get("/activity", (req, res) => {
     agreedPrice: quote.agreedPrice,
     createdAt: quote.createdAt,
     state: quote.state as string,
+    // Only ever surfaced once a real payment has actually settled - never
+    // for OPEN/PROCESSING records, where no payer exists yet.
+    payerAddress: quote.state === "FULFILLED" ? quote.payerAddress ?? null : null,
   }));
 
   const fromRejections = rejections.map((r) => ({
@@ -239,6 +249,7 @@ app.get("/activity", (req, res) => {
     agreedPrice: null as number | null,
     createdAt: r.createdAt,
     state: null as string | null,
+    payerAddress: null as string | null,
   }));
 
   const activity = [...fromQuotes, ...fromRejections]
@@ -286,6 +297,10 @@ app.get("/pay/:id", async (req, res) => {
   // landed at this point, so this state is never rolled back below - a
   // fulfillment failure is a delivery problem, not a payment problem.
   quote.state = "FULFILLED";
+  // req.payment is populated by the gateway middleware once verify+settle
+  // succeed (see PaymentRequest in @circle-fin/x402-batching/server) - the
+  // real payer address, not derived/guessed.
+  quote.payerAddress = (req as any).payment?.payer || undefined;
 
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_FULFILLMENT_ATTEMPTS; attempt++) {
@@ -299,6 +314,7 @@ app.get("/pay/:id", async (req, res) => {
         data,
         negotiationId: quote.negotiationId,
         round: quote.round,
+        payerAddress: quote.payerAddress ?? null,
       });
       return;
     } catch (err) {
