@@ -90,6 +90,12 @@ interface Quote {
 }
 const quotes = new Map<string, Quote>();
 
+// How long an accepted/countered quote stays payable. Needs to comfortably
+// cover a real human wallet-signing flow (connect MetaMask, review, sign) -
+// 120s proved too short in practice, so this is 10 minutes rather than
+// something that makes the negotiation feel meaningfully less "live".
+const QUOTE_TTL_MS = 600_000;
+
 // Per-negotiationId round counter, enforced server-side (not just by the
 // buyer's own attempt loop). Default cap chosen to bound a single
 // negotiation session to a handful of back-and-forth offers.
@@ -195,7 +201,7 @@ app.post("/quote", (req, res) => {
     agreedPrice: result.price,
     reason: result.reason,
     payUrl: `/pay/${id}`,
-    expiresInSeconds: 120,
+    expiresInSeconds: QUOTE_TTL_MS / 1000,
     negotiationId,
     round,
   });
@@ -282,7 +288,7 @@ app.get("/pay/:id", (req, res, next) => {
     res.status(409).json({ error: detail });
     return;
   }
-  if (Date.now() - quote.createdAt > 120_000) { res.status(410).json({ error: "Quote expired - request a new /quote" }); return; }
+  if (Date.now() - quote.createdAt > QUOTE_TTL_MS) { res.status(410).json({ error: "Quote expired - request a new /quote" }); return; }
 
   const priced = gateway.require(`$${quote.agreedPrice.toFixed(6)}`);
   quoteContext.run(req.params.id, () => priced(req as any, res as any, next));

@@ -286,6 +286,17 @@ export default function NegotiationSection() {
                   {lines.join("\n")}
                   {pending ? <span className="animate-pulse">▍</span> : null}
                 </pre>
+
+                {payState === "settled" && payerAddress && (
+                  <a
+                    href={`https://testnet.arcscan.app/address/${payerAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex w-full min-w-0 items-center gap-1.5 truncate rounded-lg border border-success/40 bg-success/10 px-3 py-2 font-mono text-[11px] font-semibold text-success underline underline-offset-2 transition-colors hover:border-success sm:text-xs"
+                  >
+                    {"> View on Arc Explorer →"}
+                  </a>
+                )}
               </div>
             </div>
 
@@ -301,17 +312,6 @@ export default function NegotiationSection() {
                 {payState === "settled" && "Settled ✓"}
                 {payState === "error" && "Retry payment"}
               </button>
-            )}
-
-            {payState === "settled" && payerAddress && (
-              <a
-                href={`https://testnet.arcscan.app/address/${payerAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full min-w-0 truncate rounded-xl border border-subtle px-4 py-2 text-center text-xs font-medium text-ink-heading underline underline-offset-2 transition-colors hover:border-strong"
-              >
-                Verify payment on Arcscan →
-              </a>
             )}
           </div>
         </div>
