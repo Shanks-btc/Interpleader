@@ -401,6 +401,10 @@ gateway.onAfterSettle(async (ctx: any) => {
       `[settle failed] quote=${quoteContext.getStore() ?? "unknown"} network=${ctx?.result?.network}:`,
       ctx?.result?.errorReason ?? "(no errorReason provided)"
     );
+    const quote = quotes.get(quoteContext.getStore() ?? "");
+    if (quote?.state === "PROCESSING") {
+      quote.state = "OPEN";
+    }
   }
 });
 
