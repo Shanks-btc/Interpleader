@@ -11,9 +11,11 @@
     "@x402/evm": "^2.17.0",
     "cors": "^2.8.6",
     "express": "^4.21.0",
+    "pg": "^8.22.0",
     "viem": "^2.47.1"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19"
+    "@types/cors": "^2.8.19",
+    "@types/pg": "^8.20.0"
   }
 }
