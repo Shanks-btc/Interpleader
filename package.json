@@ -6,6 +6,8 @@
     "start": "node --experimental-transform-types --no-warnings --env-file-if-exists=.env src/server.ts"
   },
   "dependencies": {
+    "@circle-fin/adapter-viem-v2": "^1.13.0",
+    "@circle-fin/swap-kit": "^1.3.2",
     "@circle-fin/x402-batching": "^3.2.0",
     "@x402/core": "^2.17.0",
     "@x402/evm": "^2.17.0",
