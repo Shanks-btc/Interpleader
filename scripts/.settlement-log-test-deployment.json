@@ -1,0 +1,153 @@
+{
+  "address": "0xa5c03b413368322a4d718865ba9f39dc7c333c2b",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_logger",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "payerAddress",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes16",
+          "name": "negotiationId",
+          "type": "bytes16"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "tool",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "agreedPriceMicroUsdc",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "SettlementLogged",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "distinctPayerCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "tool",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "agreedPriceMicroUsdc",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes16",
+          "name": "negotiationId",
+          "type": "bytes16"
+        },
+        {
+          "internalType": "address",
+          "name": "payerAddress",
+          "type": "address"
+        }
+      ],
+      "name": "logSettlement",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "newSettlementCount",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "logger",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_logger",
+          "type": "address"
+        }
+      ],
+      "name": "setLogger",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "settlementCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "deployerAddress": "0x852D69347cB23E15AF41Eb17a2e526ae7C7Ad085"
+}

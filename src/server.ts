@@ -8,8 +8,11 @@
 import express from "express";
 import cors from "cors";
 import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
+import { GatewayClient } from "@circle-fin/x402-batching/client";
+import { generatePrivateKey } from "viem/accounts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
+import { logSettlementOnChain } from "./settlementLog.ts";
 
 const app = express();
 app.use(express.json());
@@ -400,6 +403,24 @@ app.get("/pricing", (_req, res) => {
   res.status(200).json({ sellerAddress: SELLER_ADDRESS, network: NETWORK, tools });
 });
 
+// GET /revenue - read-only view of the seller's real Circle Gateway
+// balance, i.e. actual settled USDC payments from /pay/:id. Uses a
+// throwaway signing key purely because GatewayClient's constructor
+// requires one - getBalances(address) queries the given address's public
+// Gateway balance and never signs or sends anything with that key.
+// Additive and read-only: no negotiation/payment/state-machine logic here.
+app.get("/revenue", asyncHandler(async (_req, res) => {
+  const throwawayKey = generatePrivateKey();
+  const client = new GatewayClient({ chain: "arcTestnet", privateKey: throwawayKey });
+  const balances = await client.getBalances(SELLER_ADDRESS);
+
+  res.status(200).json({
+    sellerAddress: SELLER_ADDRESS,
+    gatewayTotal: balances.gateway.formattedTotal,
+    gatewayAvailable: balances.gateway.formattedAvailable,
+  });
+}));
+
 app.get("/pay/:id", asyncHandler(async (req, res, next) => {
   const result = await pool.query(`SELECT * FROM quotes WHERE id = $1`, [req.params.id]);
   if (result.rows.length === 0) { res.status(404).json({ error: "Unknown or expired quote" }); return; }
@@ -432,6 +453,16 @@ app.get("/pay/:id", asyncHandler(async (req, res) => {
     [req.params.id, payerAddress]
   );
   const quote = rowToQuote(updateResult.rows[0]);
+
+  // Append-only, non-custodial proof log on Arc Testnet - additive only.
+  // Fire-and-forget: never awaited, never blocks the response or the
+  // fulfillment retry loop below, and a failure here can never affect the
+  // already-completed payment or data delivery. Fires regardless of
+  // whether callMcpTool() below succeeds, since the settlement itself is
+  // already real at this point either way.
+  logSettlementOnChain(quote)
+    .then((txHash) => console.log(`Settlement logged on-chain (negotiation ${quote.negotiationId}): ${txHash}`))
+    .catch((err) => console.error("Settlement log failed (non-fatal - payment already settled):", err));
 
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_FULFILLMENT_ATTEMPTS; attempt++) {

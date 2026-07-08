@@ -11,6 +11,7 @@ import SavingsCallout from "@/components/SavingsCallout";
 import SettlementFooter from "@/components/SettlementFooter";
 import { getActivity, summarizeSessions, TOOL_LABELS } from "@/lib/activity";
 import { getPricing } from "@/lib/pricing";
+import { getRevenue } from "@/lib/revenue";
 
 export const metadata: Metadata = {
   title: "Dashboard — Valiquo",
@@ -21,6 +22,7 @@ export default async function DashboardPage() {
   const rows = await getActivity(100);
   const sessions = summarizeSessions(rows);
   const pricing = await getPricing();
+  const revenue = await getRevenue();
 
   const total = sessions.length;
   const acceptedSessions = sessions.filter((s) => s.decision === "accepted");
@@ -133,6 +135,38 @@ export default async function DashboardPage() {
               ? `${total} negotiation session${total === 1 ? "" : "s"} from ${rows.length} quote request${rows.length === 1 ? "" : "s"} — one session can span multiple rounds before it settles.`
               : `${total} negotiation session${total === 1 ? "" : "s"}, one quote request each so far.`}
           </p>
+        </section>
+
+        <section className="relative w-full overflow-hidden border-t border-subtle px-4 py-12 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+          <div className="mx-auto flex w-full max-w-3xl flex-col items-center text-center">
+            <span className="text-xs font-medium uppercase tracking-wide text-ink-label">
+              Seller revenue
+            </span>
+            <h2 className="mt-4 w-full text-balance break-words font-display text-2xl font-bold text-ink-heading sm:text-3xl">
+              Real settled USDC, straight from Circle Gateway.
+            </h2>
+            <p className="mt-3 w-full max-w-xl text-balance break-words text-sm leading-relaxed text-ink-body sm:text-base">
+              Not a database total — this is the seller&apos;s live Circle Gateway balance,
+              independently verifiable on-chain.
+            </p>
+          </div>
+          <div className="mx-auto mt-10 grid w-full max-w-sm grid-cols-1">
+            <StatCard
+              label="Seller Revenue (Gateway Balance)"
+              value={
+                revenue ? (
+                  <AnimatedNumber target={Number(revenue.gatewayTotal)} prefix="$" decimals={6} />
+                ) : (
+                  "—"
+                )
+              }
+              sublabel={
+                revenue
+                  ? `$${Number(revenue.gatewayAvailable).toFixed(6)} available to withdraw`
+                  : "backend unreachable"
+              }
+            />
+          </div>
         </section>
 
         <section className="relative w-full overflow-hidden border-t border-subtle px-4 py-12 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
