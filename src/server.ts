@@ -13,6 +13,7 @@ import { generatePrivateKey } from "viem/accounts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import { logSettlementOnChain } from "./settlementLog.ts";
+import { selectTool } from "./reasoning.ts";
 
 const app = express();
 app.use(express.json());
@@ -402,6 +403,48 @@ app.get("/pricing", (_req, res) => {
   }));
   res.status(200).json({ sellerAddress: SELLER_ADDRESS, network: NETWORK, tools });
 });
+
+// POST /ask - LLM reasoning layer sitting in front of the negotiation flow.
+// Given a natural-language question, an LLM call (see reasoning.ts) decides
+// which one of the 5 BTC Cycle Intelligence tools (if any) answers it, and
+// returns its reasoning so the choice is inspectable rather than a black
+// box. Purely a router: it never calls decide(), never touches Postgres or
+// the state machine, and never itself negotiates or pays - the caller takes
+// the returned tool name to the existing, unchanged POST /quote.
+app.post("/ask", asyncHandler(async (req, res) => {
+  const { question } = req.body as { question?: string };
+  if (!question || typeof question !== "string") {
+    res.status(400).json({ error: "question is required" });
+    return;
+  }
+
+  let selection;
+  try {
+    selection = await selectTool(question, BTC_CYCLE_MCP_URL, Array.from(BTC_TOOLS));
+  } catch (err) {
+    res.status(502).json({ error: "Tool-selection reasoning failed", detail: (err as Error).message });
+    return;
+  }
+
+  if (selection.tool === "none") {
+    res.status(200).json({
+      answered: false,
+      reasoning: selection.reasoning,
+      confidence: selection.confidence,
+    });
+    return;
+  }
+
+  res.status(200).json({
+    answered: true,
+    tool: selection.tool,
+    reasoning: selection.reasoning,
+    confidence: selection.confidence,
+    costFloor: COST_FLOOR_USDC[selection.tool],
+    askPrice: ASK_PRICE_USDC[selection.tool],
+    nextStep: "POST /quote with { tool, args: {}, proposedPrice } to negotiate a price for this tool.",
+  });
+}));
 
 // GET /revenue - read-only view of the seller's real Circle Gateway
 // balance, i.e. actual settled USDC payments from /pay/:id. Uses a
