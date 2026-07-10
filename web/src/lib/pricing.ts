@@ -2,6 +2,7 @@ export interface ToolPricing {
   tool: string;
   costFloor: number;
   askPrice: number;
+  requiredArgs: string[];
 }
 
 export interface PricingResponse {

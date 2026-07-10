@@ -1,8 +1,8 @@
 /**
  * LLM tool-selection reasoning layer - sits in front of the existing,
  * unchanged /quote + /pay/:id negotiation flow. Purely a router: given a
- * natural-language question, decides which one of the BTC Cycle
- * Intelligence tools (if any) answers it, with inspectable reasoning.
+ * natural-language question, decides which one of the priced tools across
+ * both sellers (if any) answers it, with inspectable reasoning.
  *
  * Does not touch decide(), the state machine, Postgres, or pricing - the
  * caller (server.ts) combines the selected tool with the existing pricing
@@ -65,11 +65,27 @@ export interface ToolSelection {
   confidence: "high" | "medium" | "low";
 }
 
-// toolNames must match the tool names server.ts negotiates over (BTC_TOOLS) -
-// passed in by the caller rather than imported, so this module has no
-// dependency on server.ts's internals.
-export async function selectTool(question: string, mcpUrl: string, toolNames: string[]): Promise<ToolSelection> {
-  const descriptions = await getToolDescriptions(mcpUrl);
+export interface ToolCandidate {
+  name: string;
+  mcpUrl: string;
+}
+
+// tools must match the tool names + MCP URLs server.ts negotiates over
+// (its TOOLS map) - passed in by the caller rather than imported, so this
+// module has no dependency on server.ts's internals. Tools may span
+// multiple distinct mcpUrl values (multiple sellers) - descriptions are
+// fetched once per distinct URL (each individually cached, see
+// getToolDescriptions) and merged into one candidate list so the LLM
+// picks across all sellers in a single call.
+export async function selectTool(question: string, tools: ToolCandidate[]): Promise<ToolSelection> {
+  const toolNames = tools.map((t) => t.name);
+  const distinctUrls = [...new Set(tools.map((t) => t.mcpUrl))];
+  const descriptionMaps = await Promise.all(distinctUrls.map((url) => getToolDescriptions(url)));
+  const descriptions = new Map<string, string>();
+  for (const map of descriptionMaps) {
+    for (const [name, description] of map) descriptions.set(name, description);
+  }
+
   const toolList = toolNames
     .map((name) => `- ${name}: ${descriptions.get(name) || "(no description available)"}`)
     .join("\n");
@@ -78,7 +94,7 @@ export async function selectTool(question: string, mcpUrl: string, toolNames: st
     model: "claude-haiku-4-5",
     max_tokens: 512,
     system:
-      'You are a routing layer for a BTC on-chain intelligence service. Given a user\'s natural-language question, decide which ONE of the listed tools (if any) would answer it. Only select a tool if it clearly and directly answers the question. If the question is ambiguous, off-topic, or does not map cleanly to any tool, select "none" and explain why rather than guessing.',
+      'You are a routing layer for a marketplace of financial and on-chain intelligence tools. Given a user\'s natural-language question, decide which ONE of the listed tools (if any) would answer it. Only select a tool if it clearly and directly answers the question. If the question is ambiguous, off-topic, or does not map cleanly to any tool, select "none" and explain why rather than guessing.',
     messages: [
       {
         role: "user",

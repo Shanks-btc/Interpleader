@@ -2,7 +2,9 @@
  * Valiquo - a negotiated-price payment layer in front of live financial
  * and on-chain intelligence data, settled via Circle Gateway/x402 on Arc.
  *
- * Current scope: single seller, BTC Cycle Intelligence (5 tools).
+ * Two sellers: BTC Cycle Intelligence (5 tools) and Short Squeeze
+ * Intelligence (2 priced tools - see the TOOLS map comment for why only 2
+ * of its 5 MCP tool names are separately priced).
  */
 
 import express from "express";
@@ -31,28 +33,48 @@ const SELLER_ADDRESS = process.env.SELLER_ADDRESS as `0x${string}` | undefined;
 const BTC_CYCLE_MCP_URL =
   process.env.BTC_CYCLE_MCP_URL ?? "https://btc-cycle-intelligence-production-410b.up.railway.app/mcp";
 
-const BTC_TOOLS = new Set([
-  "get_btc_cycle_regime",
-  "get_lth_behavior",
-  "get_entry_risk",
-  "compare_to_2021_top",
-  "get_nupl_sentiment",
-]);
+const SHORT_SQUEEZE_MCP_URL =
+  process.env.SHORT_SQUEEZE_MCP_URL ?? "https://short-squeeze-intelligence-production-6b31.up.railway.app/mcp";
 
-const COST_FLOOR_USDC: Record<string, number> = {
-  get_btc_cycle_regime: 0.003,
-  get_lth_behavior: 0.0015,
-  get_entry_risk: 0.0015,
-  compare_to_2021_top: 0.002,
-  get_nupl_sentiment: 0.0015,
-};
+interface ToolConfig {
+  mcpUrl: string;
+  costFloor: number;
+  askPrice: number;
+  // Present only for tools that need caller-supplied arguments (e.g. a
+  // ticker). Checked in decide() before any price negotiation - a quote
+  // for a tool missing a required arg would otherwise still get priced and
+  // paid, only failing later at fulfillment.
+  requiredArgs?: string[];
+}
 
-const ASK_PRICE_USDC: Record<string, number> = {
-  get_btc_cycle_regime: 0.008,
-  get_lth_behavior: 0.004,
-  get_entry_risk: 0.004,
-  compare_to_2021_top: 0.005,
-  get_nupl_sentiment: 0.004,
+// Single lookup spanning both sellers - tool name is the key everywhere
+// this map is used (decide(), callMcpTool(), /pricing), so one merged map
+// avoids a second seller-indirection layer. Tool names are already unique
+// across both sellers' real tool sets.
+const TOOLS: Record<string, ToolConfig> = {
+  get_btc_cycle_regime: { mcpUrl: BTC_CYCLE_MCP_URL, costFloor: 0.003, askPrice: 0.008 },
+  get_lth_behavior: { mcpUrl: BTC_CYCLE_MCP_URL, costFloor: 0.0015, askPrice: 0.004 },
+  get_entry_risk: { mcpUrl: BTC_CYCLE_MCP_URL, costFloor: 0.0015, askPrice: 0.004 },
+  compare_to_2021_top: { mcpUrl: BTC_CYCLE_MCP_URL, costFloor: 0.002, askPrice: 0.005 },
+  get_nupl_sentiment: { mcpUrl: BTC_CYCLE_MCP_URL, costFloor: 0.0015, askPrice: 0.004 },
+  // Short Squeeze Intelligence exposes 5 MCP tool names, but only 2 are
+  // priced here. Confirmed live against the seller's own source
+  // (short-squeeze-intelligence/src/index.js): tools/call routes every
+  // tool name except compare_squeeze_risk through the identical
+  // getSqueezeData(ticker) call, with no differentiation by tool name -
+  // get_short_interest, get_cost_to_borrow, and get_short_interest_trend
+  // return byte-identical payloads to get_squeeze_risk for the same
+  // ticker. Pricing them as separate paid products would charge for the
+  // same output under different names, so they deliberately have no
+  // TOOLS entry - get_squeeze_risk is the one priced, real single-ticker
+  // offering.
+  get_squeeze_risk: { mcpUrl: SHORT_SQUEEZE_MCP_URL, costFloor: 0.003, askPrice: 0.008, requiredArgs: ["ticker"] },
+  compare_squeeze_risk: {
+    mcpUrl: SHORT_SQUEEZE_MCP_URL,
+    costFloor: 0.002,
+    askPrice: 0.005,
+    requiredArgs: ["ticker1", "ticker2"],
+  },
 };
 
 if (!SELLER_ADDRESS) {
@@ -248,12 +270,23 @@ function asyncHandler(
   };
 }
 
-function decide(tool: string, proposedPrice: number): { decision: "accept" | "reject" | "counter"; price: number; reason: string } {
-  if (!BTC_TOOLS.has(tool)) {
+function decide(
+  tool: string,
+  proposedPrice: number,
+  args: Record<string, unknown>
+): { decision: "accept" | "reject" | "counter"; price: number; reason: string } {
+  const config = TOOLS[tool];
+  if (!config) {
     return { decision: "reject", price: 0, reason: `Unknown tool: ${tool}` };
   }
-  const floor = COST_FLOOR_USDC[tool];
-  const ask = ASK_PRICE_USDC[tool];
+  if (config.requiredArgs) {
+    const missing = config.requiredArgs.filter((key) => typeof args[key] !== "string" || !args[key]);
+    if (missing.length > 0) {
+      return { decision: "reject", price: 0, reason: `Missing required argument(s): ${missing.join(", ")}` };
+    }
+  }
+  const floor = config.costFloor;
+  const ask = config.askPrice;
 
   if (proposedPrice >= ask) {
     return { decision: "accept", price: ask, reason: "Offer meets or exceeds asking price." };
@@ -297,7 +330,7 @@ app.post("/quote", asyncHandler(async (req, res) => {
     return;
   }
 
-  const result = decide(tool, proposedPrice);
+  const result = decide(tool, proposedPrice, args ?? {});
 
   if (result.decision === "reject") {
     await pool.query(
@@ -395,22 +428,24 @@ app.get("/activity", asyncHandler(async (req, res) => {
 // address and settlement network, straight from this file's own constants
 // (never a second, hand-copied set of numbers). Purely additive - no
 // negotiation logic here.
-app.get("/pricing", (_req, res) => {
-  const tools = Object.keys(COST_FLOOR_USDC).map((tool) => ({
+app.get("/pricing", (_req: express.Request, res: express.Response) => {
+  const tools = Object.entries(TOOLS).map(([tool, config]) => ({
     tool,
-    costFloor: COST_FLOOR_USDC[tool],
-    askPrice: ASK_PRICE_USDC[tool],
+    costFloor: config.costFloor,
+    askPrice: config.askPrice,
+    requiredArgs: config.requiredArgs ?? [],
   }));
   res.status(200).json({ sellerAddress: SELLER_ADDRESS, network: NETWORK, tools });
 });
 
 // POST /ask - LLM reasoning layer sitting in front of the negotiation flow.
 // Given a natural-language question, an LLM call (see reasoning.ts) decides
-// which one of the 5 BTC Cycle Intelligence tools (if any) answers it, and
-// returns its reasoning so the choice is inspectable rather than a black
-// box. Purely a router: it never calls decide(), never touches Postgres or
-// the state machine, and never itself negotiates or pays - the caller takes
-// the returned tool name to the existing, unchanged POST /quote.
+// which one of the priced tools across both sellers (if any) answers it,
+// and returns its reasoning so the choice is inspectable rather than a
+// black box. Purely a router: it never calls decide(), never touches
+// Postgres or the state machine, and never itself negotiates or pays - the
+// caller takes the returned tool name to the existing, unchanged POST
+// /quote.
 app.post("/ask", asyncHandler(async (req, res) => {
   const { question } = req.body as { question?: string };
   if (!question || typeof question !== "string") {
@@ -420,7 +455,10 @@ app.post("/ask", asyncHandler(async (req, res) => {
 
   let selection;
   try {
-    selection = await selectTool(question, BTC_CYCLE_MCP_URL, Array.from(BTC_TOOLS));
+    selection = await selectTool(
+      question,
+      Object.entries(TOOLS).map(([name, config]) => ({ name, mcpUrl: config.mcpUrl }))
+    );
   } catch (err) {
     res.status(502).json({ error: "Tool-selection reasoning failed", detail: (err as Error).message });
     return;
@@ -435,13 +473,15 @@ app.post("/ask", asyncHandler(async (req, res) => {
     return;
   }
 
+  const config = TOOLS[selection.tool];
   res.status(200).json({
     answered: true,
     tool: selection.tool,
     reasoning: selection.reasoning,
     confidence: selection.confidence,
-    costFloor: COST_FLOOR_USDC[selection.tool],
-    askPrice: ASK_PRICE_USDC[selection.tool],
+    costFloor: config.costFloor,
+    askPrice: config.askPrice,
+    requiredArgs: config.requiredArgs ?? [],
     nextStep: "POST /quote with { tool, args: {}, proposedPrice } to negotiate a price for this tool.",
   });
 }));
@@ -634,7 +674,9 @@ gateway.onAfterSettle(async (ctx: any) => {
 });
 
 async function callMcpTool(tool: string, args: Record<string, unknown>): Promise<unknown> {
-  const r = await fetch(BTC_CYCLE_MCP_URL, {
+  const config = TOOLS[tool];
+  if (!config) throw new Error(`Unknown tool: ${tool}`);
+  const r = await fetch(config.mcpUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "tools/call", params: { name: tool, arguments: args } }),
@@ -670,7 +712,7 @@ async function main() {
   app.listen(PORT, () => {
     console.log(`Valiquo listening on http://localhost:${PORT}`);
     console.log(`Seller: ${SELLER_ADDRESS}`);
-    console.log(`Wrapping MCP tool server: ${BTC_CYCLE_MCP_URL}`);
+    console.log(`Wrapping MCP tool servers: ${BTC_CYCLE_MCP_URL}, ${SHORT_SQUEEZE_MCP_URL}`);
   });
 }
 

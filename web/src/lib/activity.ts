@@ -6,6 +6,8 @@ export const TOOL_LABELS: Record<string, string> = {
   get_lth_behavior: "LTH Behavior",
   compare_to_2021_top: "Compare to 2021 Top",
   get_nupl_sentiment: "NUPL Sentiment",
+  get_squeeze_risk: "Squeeze Risk",
+  compare_squeeze_risk: "Compare Squeeze Risk",
 };
 
 export interface ActivityRecord {

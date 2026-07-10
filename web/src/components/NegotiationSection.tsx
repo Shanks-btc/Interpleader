@@ -1,21 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { payWithWallet } from "@/lib/walletPay";
+import { TOOL_LABELS } from "@/lib/activity";
+import type { ToolPricing, PricingResponse } from "@/lib/pricing";
 
 const QUOTE_URL =
   process.env.NEXT_PUBLIC_QUOTE_API_URL ?? "http://localhost:3000/quote";
 const API_ORIGIN = new URL(QUOTE_URL).origin;
+const PRICING_URL = `${API_ORIGIN}/pricing`;
 
-const TOOLS = [
-  { id: "get_btc_cycle_regime", label: "BTC Cycle Regime" },
-  { id: "get_entry_risk", label: "Entry Risk" },
-  { id: "get_lth_behavior", label: "LTH Behavior" },
-  { id: "compare_to_2021_top", label: "Compare to 2021 Top" },
-  { id: "get_nupl_sentiment", label: "NUPL Sentiment" },
+// Used only if /pricing can't be reached on mount - keeps the form usable
+// (the /quote calls it makes will surface their own error via the existing
+// fetch-failure handling below) rather than rendering an empty dropdown.
+const FALLBACK_TOOLS: ToolPricing[] = [
+  { tool: "get_btc_cycle_regime", costFloor: 0.003, askPrice: 0.008, requiredArgs: [] },
+  { tool: "get_entry_risk", costFloor: 0.0015, askPrice: 0.004, requiredArgs: [] },
+  { tool: "get_lth_behavior", costFloor: 0.0015, askPrice: 0.004, requiredArgs: [] },
+  { tool: "compare_to_2021_top", costFloor: 0.002, askPrice: 0.005, requiredArgs: [] },
+  { tool: "get_nupl_sentiment", costFloor: 0.0015, askPrice: 0.004, requiredArgs: [] },
 ];
 
-const PRESETS = [
+// "ticker1" -> "Ticker 1", "ticker" -> "Ticker" - generic enough for any
+// future requiredArgs name without a per-arg label table.
+function argLabel(key: string): string {
+  const spaced = key.replace(/(\d+)$/, " $1");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+const PRESETS: Array<{ label: string; tool: string; price: string; args?: Record<string, string> }> = [
   {
     label: "Accept at proposed — BTC Cycle Regime @ $0.006",
     tool: "get_btc_cycle_regime",
@@ -30,6 +43,12 @@ const PRESETS = [
     label: "Accept at ask — NUPL Sentiment @ $0.004",
     tool: "get_nupl_sentiment",
     price: "0.004",
+  },
+  {
+    label: "Accept at ask — Squeeze Risk (GME) @ $0.008",
+    tool: "get_squeeze_risk",
+    price: "0.008",
+    args: { ticker: "GME" },
   },
 ];
 
@@ -48,8 +67,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_ROUNDS = 5;
 
 export default function NegotiationSection() {
-  const [tool, setTool] = useState(TOOLS[0].id);
+  const [tools, setTools] = useState<ToolPricing[]>(FALLBACK_TOOLS);
+  const [tool, setTool] = useState(FALLBACK_TOOLS[0].tool);
   const [price, setPrice] = useState("0.006");
+  const [argValues, setArgValues] = useState<Record<string, string>>({});
   const [lines, setLines] = useState<string[]>([
     "$ valiquo — waiting for a proposal...",
   ]);
@@ -61,6 +82,29 @@ export default function NegotiationSection() {
   const [payUrl, setPayUrl] = useState<string | null>(null);
   const [payerAddress, setPayerAddress] = useState<string | null>(null);
 
+  // Live from the backend so newly-added tools (and their requiredArgs)
+  // show up automatically - falls back to the hardcoded BTC-only list if
+  // the backend is unreachable, so the form stays usable either way.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(PRICING_URL)
+      .then((res) => (res.ok ? (res.json() as Promise<PricingResponse>) : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => {
+        if (!cancelled && data.tools.length > 0) setTools(data.tools);
+      })
+      .catch(() => {
+        // Keep FALLBACK_TOOLS - /quote's own fetch-failure handling below
+        // already surfaces "backend unreachable" to the user if they submit.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedTool = tools.find((t) => t.tool === tool);
+  const requiredArgs = selectedTool?.requiredArgs ?? [];
+  const missingArgs = requiredArgs.filter((key) => !argValues[key]?.trim());
+
   async function appendLine(text: string) {
     setLines((prev) => [...prev, text]);
     await sleep(450);
@@ -69,9 +113,10 @@ export default function NegotiationSection() {
   function applyPreset(preset: (typeof PRESETS)[number]) {
     setTool(preset.tool);
     setPrice(preset.price);
+    setArgValues(preset.args ?? {});
   }
 
-  async function runNegotiation(selectedTool: string, startPrice: number) {
+  async function runNegotiation(selectedTool: string, startPrice: number, args: Record<string, string>) {
     setPending(true);
     setPayState("idle");
     setAgreedPrice(null);
@@ -98,6 +143,7 @@ export default function NegotiationSection() {
             tool: selectedTool,
             proposedPrice: currentPrice,
             negotiationId,
+            args,
           }),
         });
         json = await res.json();
@@ -146,8 +192,8 @@ export default function NegotiationSection() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const parsed = Number(price);
-    if (Number.isNaN(parsed) || parsed < 0 || pending) return;
-    await runNegotiation(tool, parsed);
+    if (Number.isNaN(parsed) || parsed < 0 || pending || missingArgs.length > 0) return;
+    await runNegotiation(tool, parsed, argValues);
   }
 
   async function handlePay() {
@@ -214,16 +260,44 @@ export default function NegotiationSection() {
               <select
                 id="tool"
                 value={tool}
-                onChange={(e) => setTool(e.target.value)}
+                onChange={(e) => {
+                  setTool(e.target.value);
+                  setArgValues({});
+                }}
                 className="w-full min-w-0 rounded-lg border border-subtle bg-canvas px-3 py-2 text-sm text-ink-heading"
               >
-                {TOOLS.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
+                {tools.map((t) => (
+                  <option key={t.tool} value={t.tool}>
+                    {TOOL_LABELS[t.tool] ?? t.tool}
                   </option>
                 ))}
               </select>
             </div>
+
+            {requiredArgs.length > 0 && (
+              <div className="mt-4 flex flex-col gap-2">
+                {requiredArgs.map((key) => (
+                  <div key={key} className="flex flex-col gap-2">
+                    <label
+                      htmlFor={`arg-${key}`}
+                      className="text-xs font-medium uppercase tracking-wide text-ink-label"
+                    >
+                      {argLabel(key)}
+                    </label>
+                    <input
+                      id={`arg-${key}`}
+                      type="text"
+                      placeholder={key.startsWith("ticker") ? "e.g. GME" : undefined}
+                      value={argValues[key] ?? ""}
+                      onChange={(e) =>
+                        setArgValues((prev) => ({ ...prev, [key]: e.target.value.toUpperCase() }))
+                      }
+                      className="w-full min-w-0 rounded-lg border border-subtle bg-canvas px-3 py-2 text-sm text-ink-heading"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="mt-4 flex flex-col gap-2">
               <label
@@ -245,10 +319,14 @@ export default function NegotiationSection() {
 
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || missingArgs.length > 0}
               className="mt-6 w-full rounded-xl bg-accent-gradient px-6 py-3 text-sm font-semibold text-ink-heading transition-opacity disabled:opacity-50"
             >
-              {pending ? "Negotiating..." : "Propose price"}
+              {pending
+                ? "Negotiating..."
+                : missingArgs.length > 0
+                ? `Enter ${missingArgs.map(argLabel).join(", ")}`
+                : "Propose price"}
             </button>
 
             <div className="mt-6 min-w-0">
