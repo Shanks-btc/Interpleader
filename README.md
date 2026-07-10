@@ -1,14 +1,12 @@
 # Valiquo
 
-**The first negotiated-price payment layer for AI agents buying live intelligence data — with every settlement independently verifiable on-chain.**
+**The first negotiated-price payment layer for AI agents buying live intelligence data, with every settlement independently verifiable on-chain.**
 
 Most AI agents pay a flat rate for every API call, whether the request is worth $0.0001 or $10 to them. Valiquo replaces the fixed price tag with a real, live negotiation, propose a price, get accepted, countered, or rejected, settled instantly in USDC via Circle Gateway and x402 on Arc Testnet. Every settlement is also logged permanently on a dedicated on-chain contract, so anyone can independently verify real usage without trusting our server at all.
 
 **Live app:** [valiquo.xyz](https://valiquo.xyz)
 **GitHub:** [github.com/Shanks-btc/Valiquo](https://github.com/Shanks-btc/Valiquo)
-**Demo video:** [link]
 
-Built for the Lepton Agents Hackathon (Circle × Arc × Canteen).
 
 ---
 
@@ -22,13 +20,13 @@ Most paid data APIs charge the same price per call regardless of what the reques
 4. **Deliver** — the seller calls the live intelligence tool and returns the data.
 5. **Log** — the settlement is permanently recorded on a dedicated on-chain contract, independently verifiable by anyone.
 
-The negotiation core is a transparent, deterministic policy engine — every accept/counter/reject decision is fully inspectable and reproducible from source, not a black box. On top of it, a genuine LLM reasoning layer (`POST /ask`) lets an agent ask a natural-language question and get back which tool actually answers it, with real justification — not a fixed lookup table.
+The negotiation core is a transparent, deterministic policy engine, every accept/counter/reject decision is fully inspectable and reproducible from source, not a black box. On top of it, a genuine LLM reasoning layer (`POST /ask`) lets an agent ask a natural-language question and get back which tool actually answers it, with real justification,not a fixed lookup table.
 
 ---
 
 ## Real Traction — All Verifiable On-Chain
 
-Every number below is read directly from Valiquo's settlement-logging smart contract on Arc Testnet — not from our own server, not self-reported. Anyone can independently verify this themselves.
+Every number below is read directly from Valiquo's settlement-logging smart contract on Arc Testnet, not from our own server, not self-reported. Anyone can independently verify this themselves.
 
 | Metric | Value | Verification |
 |---|---|---|
