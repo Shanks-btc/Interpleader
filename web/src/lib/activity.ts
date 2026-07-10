@@ -10,6 +10,21 @@ export const TOOL_LABELS: Record<string, string> = {
   compare_squeeze_risk: "Compare Squeeze Risk",
 };
 
+// Which tools belong to which seller - /pricing doesn't expose a provider
+// field per tool, so this mirrors TOOL_LABELS's existing pattern of
+// frontend-owned tool metadata rather than adding a backend dependency for
+// what's purely a presentation concern.
+export const SELLER_TOOLS: Record<string, string[]> = {
+  "BTC Cycle Intelligence": [
+    "get_btc_cycle_regime",
+    "get_entry_risk",
+    "get_lth_behavior",
+    "compare_to_2021_top",
+    "get_nupl_sentiment",
+  ],
+  "Short Squeeze Intelligence": ["get_squeeze_risk", "compare_squeeze_risk"],
+};
+
 export interface ActivityRecord {
   quoteId: string | null;
   negotiationId: string;

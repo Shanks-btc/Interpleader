@@ -32,6 +32,14 @@ import {
 
 const GATEWAY_AUTH_VALIDITY_WINDOW_SECONDS = 7 * 24 * 60 * 60 + 100; // matches SDK constant
 
+// Real Arc Testnet values - same ones already used in src/settlementLog.ts,
+// scripts/test-settlement-log.mjs, and docs/architecture.md. Not invented
+// for this fix.
+const ARC_TESTNET_CHAIN_ID = 5042002;
+const ARC_TESTNET_CHAIN_ID_HEX = "0x4cef52"; // 5042002 in hex, per EIP-3085
+const ARC_TESTNET_RPC_URL = "https://rpc.testnet.arc.network/";
+const ARC_TESTNET_EXPLORER_URL = "https://testnet.arcscan.app";
+
 // Deposit at least this much (in whole USDC) when topping up Gateway balance,
 // so a buyer doesn't have to re-deposit before every single small payment.
 const MIN_DEPOSIT_USDC = "1";
@@ -99,6 +107,70 @@ function base64Decode<T>(value: string): T {
   return JSON.parse(atob(value)) as T;
 }
 
+// Diagnosed root cause of the "returned no data (0x)" contract errors: the
+// public/wallet clients below are built on `custom(eth)` - MetaMask's
+// injected provider - with no chain enforcement, so every read/write
+// silently goes to whatever network MetaMask currently has active. If
+// that isn't Arc Testnet, the Gateway contract address has no code there
+// and viem's read comes back empty - independent of the contract, ABI, or
+// RPC being fine (all separately verified working). This must run before
+// any contract interaction, not just before signing.
+async function ensureArcTestnet(eth: any, onProgress?: (message: string) => void | Promise<void>): Promise<void> {
+  const currentChainIdHex: string = await eth.request({ method: "eth_chainId" });
+  if (parseInt(currentChainIdHex, 16) === ARC_TESTNET_CHAIN_ID) {
+    return;
+  }
+
+  await onProgress?.("> Wallet is on the wrong network - requesting switch to Arc Testnet...");
+
+  try {
+    await eth.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: ARC_TESTNET_CHAIN_ID_HEX }],
+    });
+  } catch (switchError: any) {
+    // 4902: chain not yet added to the wallet - the standard EIP-3085
+    // signal to fall back to wallet_addEthereumChain instead of failing.
+    if (switchError?.code === 4902) {
+      await onProgress?.("> Arc Testnet not found in wallet - adding it now...");
+      try {
+        await eth.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: ARC_TESTNET_CHAIN_ID_HEX,
+              chainName: "Arc Testnet",
+              nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+              rpcUrls: [ARC_TESTNET_RPC_URL],
+              blockExplorerUrls: [ARC_TESTNET_EXPLORER_URL],
+            },
+          ],
+        });
+      } catch (addError: any) {
+        if (addError?.code === 4001) {
+          throw new Error("Adding Arc Testnet was declined in wallet - Arc Testnet is required to pay.");
+        }
+        throw new Error(addError?.shortMessage ?? addError?.message ?? "Could not add Arc Testnet to your wallet.");
+      }
+    } else if (switchError?.code === 4001) {
+      throw new Error("Network switch declined in wallet - Arc Testnet is required to pay.");
+    } else {
+      throw new Error(switchError?.shortMessage ?? switchError?.message ?? "Could not switch your wallet to Arc Testnet.");
+    }
+  }
+
+  // Some wallets resolve the switch/add request without the active network
+  // actually having changed yet (or the resolved request was stale) -
+  // confirm the chain really changed rather than trusting the request
+  // resolved without error.
+  const confirmedChainIdHex: string = await eth.request({ method: "eth_chainId" });
+  if (parseInt(confirmedChainIdHex, 16) !== ARC_TESTNET_CHAIN_ID) {
+    throw new Error("Wallet is still not on Arc Testnet - please switch networks manually and try again.");
+  }
+
+  await onProgress?.("> Switched to Arc Testnet.");
+}
+
 export async function payWithWallet(
   payUrl: string,
   onProgress?: (message: string) => void | Promise<void>
@@ -113,6 +185,10 @@ export async function payWithWallet(
   if (!buyer) {
     throw new Error("No wallet account available.");
   }
+
+  // Must happen before any contract read/write below (availableBalance,
+  // allowance, deposit, etc.) - see ensureArcTestnet's comment for why.
+  await ensureArcTestnet(eth, onProgress);
 
   // Step 1: unpaid GET to discover payment requirements (real 402 response).
   const discoveryRes = await fetch(payUrl, { method: "GET" });

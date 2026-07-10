@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Nav from "@/components/Nav";
+import ProofSection from "@/components/ProofSection";
 import StatCard from "@/components/StatCard";
 import DecisionsChart from "@/components/DecisionsChart";
 import ActivityTable from "@/components/ActivityTable";
@@ -136,6 +137,8 @@ export default async function DashboardPage() {
               : `${total} negotiation session${total === 1 ? "" : "s"}, one quote request each so far.`}
           </p>
         </section>
+
+        <ProofSection />
 
         <section className="relative w-full overflow-hidden border-t border-subtle px-4 py-12 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center text-center">
