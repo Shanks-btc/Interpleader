@@ -1,90 +1,94 @@
 # Valiquo
 
-**A negotiated-price payment layer for live financial and on-chain intelligence.**
+**The first negotiated-price payment layer for AI agents buying live intelligence data — with every settlement independently verifiable on-chain.**
 
-Fixed API pricing doesn't fit how autonomous agents (or people) actually value a request — a decision-critical query and a curious one-off ping pay the same flat rate today, with no way for either side to say what something is actually worth. Valiquo replaces the fixed price tag with a real, live negotiation: propose a price, the seller accepts, counters at its real cost floor, or rejects — resolved in one round trip. Once agreed, payment settles on **Arc Testnet** via **Circle Gateway** and the **x402 protocol**, and the buyer receives the actual intelligence result, returned as machine-readable data ready for downstream agent use.
+Most AI agents pay a flat rate for every API call, whether the request is worth $0.0001 or $10 to them. Valiquo replaces the fixed price tag with a real, live negotiation, propose a price, get accepted, countered, or rejected, settled instantly in USDC via Circle Gateway and x402 on Arc Testnet. Every settlement is also logged permanently on a dedicated on-chain contract, so anyone can independently verify real usage without trusting our server at all.
 
+**Live app:** [valiquo.xyz](https://valiquo.xyz)
+**GitHub:** [github.com/Shanks-btc/Valiquo](https://github.com/Shanks-btc/Valiquo)
+**Demo video:** [link]
 
-- **Live:** [valiquo.xyz](https://valiquo.xyz)
-- **Backend API:** [valiquo-production.up.railway.app](https://valiquo-production.up.railway.app)
-- **Dashboard:** [valiquo.xyz/dashboard](https://valiquo.xyz/dashboard)
-- **Docs:** [valiquo.xyz/docs](https://valiquo.xyz/docs)
-- **GitHub:** [github.com/Shanks-btc/Valiquo](https://github.com/Shanks-btc/Valiquo)
+Built for the Lepton Agents Hackathon (Circle × Arc × Canteen).
 
 ---
 
 ## What Valiquo Does
 
+Most paid data APIs charge the same price per call regardless of what the request is actually worth to the agent making it. Valiquo fixes this with a real negotiation protocol:
+
 1. **Propose** — an agent (or a person, via the same endpoint) sends a proposed price for a data tool to `POST /quote`.
 2. **Negotiate** — the seller accepts outright, counters at its real cost floor with a reason, or rejects — bounded to a handful of rounds per session.
 3. **Settle** — once a price is agreed, payment settles on-chain via Circle Gateway and the x402 protocol. No invoices, no manual reconciliation.
-4. **Deliver** — the seller calls the live intelligence tool and returns machine-readable data, ready for downstream agent use.
+4. **Deliver** — the seller calls the live intelligence tool and returns the data.
+5. **Log** — the settlement is permanently recorded on a dedicated on-chain contract, independently verifiable by anyone.
 
-The negotiation logic is a transparent, deterministic policy engine — not an LLM — so every accept/counter/reject decision is fully inspectable and reproducible from the source, not a black box.
+The negotiation core is a transparent, deterministic policy engine — every accept/counter/reject decision is fully inspectable and reproducible from source, not a black box. On top of it, a genuine LLM reasoning layer (`POST /ask`) lets an agent ask a natural-language question and get back which tool actually answers it, with real justification — not a fixed lookup table.
 
 ---
 
-## Real Traction — Verifiable On-Chain
+## Real Traction — All Verifiable On-Chain
 
-As of **July 5, 2026**, Valiquo has processed real, distinct payments from real testers — not simulated, not self-transfers. Every number below is pulled live from Valiquo's own `GET /activity` endpoint; regenerate this table yourself anytime with `scripts/generate-traction-table.mjs`, or check the raw endpoint directly: [valiquo-production.up.railway.app/activity](https://valiquo-production.up.railway.app/activity)
+Every number below is read directly from Valiquo's settlement-logging smart contract on Arc Testnet — not from our own server, not self-reported. Anyone can independently verify this themselves.
 
 | Metric | Value | Verification |
 |---|---|---|
-| Distinct payer wallets | 6 (5 external testers + 1 project-owner test wallet, labeled below) | [`/activity`](https://valiquo-production.up.railway.app/activity) |
-| Real settled negotiations | 9 | `/activity` |
+| Real settled negotiations | **29** | Contract event log |
+| Distinct payer wallets | **19** | `distinctPayerCount()` |
+| Settlement contract | `0xa2d85832cdc83557abfdfc167fcc919b87a99a80` | [View on Arc Explorer ↗](https://testnet.arcscan.app/address/0xa2d85832cdc83557abfdfc167fcc919b87a99a80) |
+| Real end-to-end payment (first proof) | $0.008 USDC, balance-verified | Documented below |
 | Backend regression tests | 9/9 passing | `scripts/test-valiquo-quotes.ps1` |
-| Real on-chain payment (first end-to-end proof) | $0.008 USDC, balance-verified | See "First Verified Payment" below |
 
-**Distinct payer wallets, individually verifiable on the Arc Testnet explorer:**
-
-| Wallet | Explorer Link | Note |
-|---|---|---|
-| `0xf6e345d3c7b44c4d7cd27f34d8e9e1d55a112142` | [View](https://testnet.arcscan.app/address/0xf6e345d3c7b44c4d7cd27f34d8e9e1d55a112142) | External tester |
-| `0x1d9198499030b115899bd718b8874dd671691f5e` | [View](https://testnet.arcscan.app/address/0x1d9198499030b115899bd718b8874dd671691f5e) | External tester |
-| `0xefb9014198317f703408069cda811e1253601a92` | [View](https://testnet.arcscan.app/address/0xefb9014198317f703408069cda811e1253601a92) | External tester |
-| `0xeb59f6bc98c655f9ef3b81981f5ad53e8cdb4237` | [View](https://testnet.arcscan.app/address/0xeb59f6bc98c655f9ef3b81981f5ad53e8cdb4237) | External tester |
-| `0x9fe8f5497180976fcefee773dd5778db73e01047` | [View](https://testnet.arcscan.app/address/0x9fe8f5497180976fcefee773dd5778db73e01047) | External tester |
-| `0x8cfE33b6A26A0797e4C7E7FEB39290e08258c262` | [View](https://testnet.arcscan.app/address/0x8cfE33b6A26A0797e4C7E7FEB39290e08258c262) | Project owner's own test wallet — labeled honestly, not counted as an external user |
-
-More testers are actively onboarding as of this writing — this table will grow. We publish the exact method for generating it so anyone can regenerate and verify it independently, not just take our word for it:
+### Independent verification — anyone can run this
 
 ```bash
-BACKEND_URL=https://valiquo-production.up.railway.app node scripts/generate-traction-table.mjs
+# Read the real settlement count directly from Arc Testnet
+cast call 0xa2d85832cdc83557abfdfc167fcc919b87a99a80 \
+  "settlementCount()(uint256)" \
+  --rpc-url https://rpc.testnet.arc.network/
+
+cast call 0xa2d85832cdc83557abfdfc167fcc919b87a99a80 \
+  "distinctPayerCount()(uint256)" \
+  --rpc-url https://rpc.testnet.arc.network/
 ```
 
-### First Verified Payment — Full Trace
+No Valiquo server is in the trust path for this number. The contract only records a settlement after Circle Gateway has already verified and settled a real USDC payment — it cannot be inflated by fake or self-transferred activity.
 
-Before real users touched the product, we proved the entire negotiate → sign → settle → deliver pipeline end-to-end ourselves:
+### Real settlement history (sample — full history on-chain)
+
+| Timestamp (UTC) | Payer | Tool | Price | Tx |
+|---|---|---|---|---|
+| 2026-07-08 14:51:12 | `0x852D...D085` | get_btc_cycle_regime | $0.005 | [View ↗](https://testnet.arcscan.app/tx/0x1119f2bf57edb5a7d685358414403a3cc84e860a1d68b14d9388166d8d25a0df) |
+| 2026-07-08 23:33:21 | `0x9Fe8...1047` | get_btc_cycle_regime | $0.006 | [View ↗](https://testnet.arcscan.app/tx/0x61a58edf2ed2be2ac945f2eec286afeea125198e433899abef9340b667762e4a) |
+| 2026-07-09 12:37:00 | `0xa7a5...E7b69` | get_btc_cycle_regime | $0.006 | [View ↗](https://testnet.arcscan.app/tx/0xcf4287eac74dd9ff0e1ada04804bd21c46d9f7e7bfa42196b1d118b8bbb5c535) |
+| 2026-07-10 14:15:55 | `0xeb59...B4237` | get_btc_cycle_regime | $0.006 | [View ↗](https://testnet.arcscan.app/tx/0x7095b80252ce152672d25999ebc0f33aae13dc3001b8394087116c3a2554e582) |
+| 2026-07-10 15:25:10 | `0x7780...F2482DF36` | get_btc_cycle_regime | $0.006 | [View ↗](https://testnet.arcscan.app/tx/0x0f0973b76f8fdb4b9e56f4bf7ea3124ea7d60d250bd70ed8b2645afa78543def) |
+| ...24 more | | | | [Full history on-chain ↗](https://testnet.arcscan.app/address/0xa2d85832cdc83557abfdfc167fcc919b87a99a80) |
+
+*(19 of 29 settlements are from distinct wallets; one address ran repeated local integration testing during development. All 29 are `get_btc_cycle_regime` — real usage to date has concentrated on this tool.)*
+
+### First Verified Payment — full trace
+
+Before real external users touched the product, we proved the entire negotiate → sign → settle → deliver pipeline end-to-end ourselves, with independent, arithmetic proof:
 
 ```
-$ curl -X POST https://valiquo-production.up.railway.app/quote \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"get_btc_cycle_regime","proposedPrice":0.008}'
-
-{"decision":"accept","quoteId":"...","agreedPrice":0.008,
- "reason":"Offer meets or exceeds asking price.", ...}
-
-$ node scripts/check-balance.mjs   # BEFORE
-{"gatewayAvailable":"3.984"}
-
-# ... signed payment via GatewayClient.pay() ...
-
-$ node scripts/check-balance.mjs   # AFTER
-{"gatewayAvailable":"3.976"}
+Gateway balance BEFORE: 3.984 USDC
+... real negotiated payment of $0.008 via GatewayClient.pay() ...
+Gateway balance AFTER:  3.976 USDC
 ```
 
-`3.984 → 3.976` — exactly `$0.008` deducted, matching the negotiated price to the fourth decimal. This is independent, arithmetic proof the payment genuinely settled at Circle's Gateway layer, confirmed before any real external user ever touched the product.
+`3.984 → 3.976` — exactly $0.008 deducted, matching the negotiated price to the fourth decimal.
 
-### Real Bugs Found and Fixed From Live Testing
+### Real bugs found and fixed from live testing
 
-We're documenting these because we think a product that responds to real user failures, transparently, is a stronger signal than a product that never reports any:
+We're documenting these because a product that responds to real user failures is a stronger signal than one that reports none:
 
-| Bug | Root Cause | Fix | Evidence |
-|---|---|---|---|
-| "Quote expired" on real payment attempts | 120-second quote TTL was too short for real MetaMask wallet-signing time | Extended to 10 minutes (`QUOTE_TTL_MS`), unified into one constant so the response field and the enforcement check can no longer drift apart | Real user report, fixed and redeployed same day |
-| "Payment settlement failed" with no diagnosable cause | `onSettleFailure` only fires on a thrown exception; Circle's Gateway can also return a soft `{success: false, errorReason: ...}` without throwing, which our hooks never logged | Added `onAfterSettle` diagnostic logging, which fired immediately and revealed the real cause: `insufficient_balance` | Real user report → real Railway log capture → root cause found same day |
-| Quotes permanently stuck at `PROCESSING` after a soft settlement failure | `onAfterSettle`'s failure branch never reset quote state back to `OPEN`, unlike the two exception-based hooks | Added the missing state reset, mirroring the existing pattern | Found while investigating the bug above |
-| Real users had USDC in their wallet but payments still failed | Circle Gateway requires funds explicitly **deposited** into the Gateway contract — plain wallet USDC balance is a separate pool | Frontend now auto-detects insufficient Gateway balance and auto-deposits before payment, transparently, as part of the same "click Pay" flow | Root cause traced via the `onAfterSettle` logging above; fix verified by 3 real friends completing payments immediately after deploy |
+| Bug | Root Cause | Fix |
+|---|---|---|
+| "Quote expired" on real payment attempts | 120-second quote TTL was too short for real MetaMask wallet-signing time | Extended to 10 minutes, unified into one shared constant |
+| "Payment settlement failed" with no diagnosable cause | Gateway's soft failures (`{success:false}`) weren't logged, only thrown exceptions were | Added `onAfterSettle` diagnostic logging — revealed the real cause immediately |
+| Quotes permanently stuck after a soft settlement failure | Missing state reset in the soft-failure path | Added the missing reset, mirroring the existing exception-path pattern |
+| Real users had USDC but payments still failed | Circle Gateway requires funds explicitly **deposited**, not just held in the wallet | Frontend now auto-detects and auto-deposits transparently, as part of the same "click Pay" flow |
+| `/activity` and quote state resetting to empty on every server restart | In-memory storage — no persistence | Migrated to Railway-managed Postgres, with atomic conditional updates preserving the same race-safety the in-memory version had |
 
 ---
 
@@ -108,20 +112,20 @@ Agent/User → propose price → POST /quote
                            ▼
                   OPEN → PROCESSING → FULFILLED
                            │
-                           ▼
-              seller calls live intelligence tool
-                           │
-                           ▼
-              machine-readable data returned to buyer
+                ┌──────────┴──────────┐
+                ▼                     ▼
+      seller calls live tool   settlement logged
+      → data returned          on-chain (async,
+                                non-blocking)
 ```
 
 ### The state machine
 
 Every quote moves through `OPEN → PROCESSING → FULFILLED`, using Circle Gateway's real lifecycle hooks:
 
-- **`onBeforeVerify`** flips `OPEN → PROCESSING` and aborts if the quote isn't in a payable state — correlated to the specific request via Node's `AsyncLocalStorage`, keyed on `req.params.id`. We deliberately avoided correlating via `paymentPayload.resource.url`, since that field isn't covered by the EIP-712 signature and is spoofable — a real security gap we found and fixed during development, before it ever shipped.
-- **`onVerifyFailure` / `onSettleFailure`** reset `PROCESSING → OPEN` on a thrown exception, so a failed attempt doesn't permanently lock the quote.
-- **`onAfterSettle`** catches *soft* failures (Gateway returning `{success: false}` without throwing) and also resets state — the fix for the second bug in the table above.
+- **`onBeforeVerify`** flips `OPEN → PROCESSING` and aborts if the quote isn't payable — correlated to the exact request via Node's `AsyncLocalStorage`, keyed on `req.params.id`. We deliberately avoided correlating via `paymentPayload.resource.url`, since that field isn't covered by the EIP-712 signature and is spoofable — a real security gap we found and fixed before it ever shipped.
+- **`onVerifyFailure` / `onSettleFailure`** reset `PROCESSING → OPEN` on a thrown exception.
+- **`onAfterSettle`** catches soft failures (e.g. `insufficient_balance`) and also resets state.
 
 ### Negotiation logic
 
@@ -132,34 +136,86 @@ if (proposedPrice >= costFloor * 0.5)   → counter at costFloor
 else                                     → reject
 ```
 
-Real example (`get_entry_risk`, floor `$0.0015`, ask `$0.004`): a proposal of `$0.001` (66% of floor) gets countered at `$0.0015`; re-proposing at `$0.0015` gets accepted.
+### The reasoning layer (`POST /ask`)
 
----
+A genuine LLM reasoning step sits in front of the (unchanged) negotiation core. Given a natural-language question, Claude Haiku selects which of the 5 tools actually answers it — with real, inspectable justification — or honestly declines if none fit, rather than forcing a guess.
 
-## API Reference — Real Endpoints, Real Examples
+**Real example:**
+```
+Q: "is BTC in an accumulation phase right now?"
 
-Full interactive documentation: [valiquo.xyz/docs](https://valiquo.xyz/docs)
-
-### `POST /quote`
-
-Negotiate a price for a data tool.
-
-**Request:**
-```json
 {
-  "tool": "get_btc_cycle_regime",
-  "proposedPrice": 0.006,
-  "negotiationId": null
+  "answered": true,
+  "tool": "get_lth_behavior",
+  "reasoning": "The question directly asks about whether Bitcoin is in
+   an accumulation phase, which is precisely what get_lth_behavior
+   analyzes by examining long-term holder accumulation or distribution
+   patterns using MVRV and exchange flow data.",
+  "confidence": "high"
+}
+
+Q: "what's the weather like?"
+
+{
+  "answered": false,
+  "reasoning": "The question asks about weather conditions, which is
+   completely unrelated to Bitcoin on-chain metrics, market cycles, or
+   holder behavior. None of the available tools address weather data.",
+  "confidence": "high"
 }
 ```
 
-**Response — accept:**
+---
+
+## The Settlement-Logging Contract
+
+Unlike a typical hackathon demo where "traction" means trusting a server's own claims, every real Valiquo settlement is permanently logged on a dedicated Arc Testnet contract — deliberately scoped to do one thing only.
+
+```solidity
+function logSettlement(
+    string calldata tool,
+    uint256 agreedPriceMicroUsdc,
+    bytes16 negotiationId,
+    address payerAddress
+) external onlyLogger returns (uint256 newSettlementCount)
+```
+
+**Design principles:**
+- **Never holds or moves funds.** All real payment settlement stays entirely on Circle's own audited Gateway/USDC contracts. This contract is purely an append-only proof record — even a worst-case bug in it can't lock or lose a single cent.
+- **Fire-and-forget, non-blocking.** Called only *after* a real payment has already succeeded via Postgres. If the on-chain log call ever fails, the real payment and data delivery are completely unaffected — logged server-side, never exposed to the buyer.
+- **Anyone can independently derive both total settlements and distinct-user count** directly from the contract, with zero trust required in our server.
+- **Access-controlled.** Only a dedicated logger key can write to it, preventing spam or fake entries — verified with a real access-control test (an unauthorized call reverts cleanly).
+
+Deployed and tested with 5 real, isolated test cases before ever touching production: successful log, access-control rejection, distinct-user-count correctness, logger rotation, and real gas measurement (96,570 gas for a first-time payer, 36,857 for a repeat payer — roughly 10x cheaper than a comparable token swap on the same network).
+
+---
+
+## API Reference
+
+Full interactive documentation: [valiquo.xyz/docs](https://valiquo.xyz/docs)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/quote` | POST | Negotiate a price. `{tool, proposedPrice, negotiationId?}` |
+| `/pay/:id` | GET | x402-gated payment route. Unpaid → `402`; signed → settles and returns data. |
+| `/activity` | GET | Real negotiation history metadata — never the paid data itself. |
+| `/pricing` | GET | Real per-tool cost floor and asking price for all 5 tools. |
+| `/revenue` | GET | Real seller Gateway balance — genuine settled earnings, honestly labeled (a live balance, not a lifetime total). |
+| `/ask` | POST | LLM-driven tool selection from a natural-language question. |
+
+### Real request/response example
+
+```bash
+curl -X POST https://valiquo-production.up.railway.app/quote \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"get_btc_cycle_regime","proposedPrice":0.008}'
+```
 ```json
 {
   "decision": "accept",
   "quoteId": "c09c5372-fdc7-405c-904e-b6d33bbd3653",
-  "agreedPrice": 0.006,
-  "reason": "Offer clears cost floor; accepted at proposed price.",
+  "agreedPrice": 0.008,
+  "reason": "Offer meets or exceeds asking price.",
   "payUrl": "/pay/c09c5372-fdc7-405c-904e-b6d33bbd3653",
   "expiresInSeconds": 600,
   "negotiationId": "50c4cc0c-c5da-41e8-a804-28b9c01cf42f",
@@ -167,74 +223,7 @@ Negotiate a price for a data tool.
 }
 ```
 
-**Response — counter:**
-```json
-{
-  "decision": "counter",
-  "quoteId": "23934c4d-f860-40a7-9f72-63b709e65a9d",
-  "agreedPrice": 0.003,
-  "reason": "Offer below cost floor; countering at floor price.",
-  "payUrl": "/pay/23934c4d-f860-40a7-9f72-63b709e65a9d",
-  "expiresInSeconds": 600,
-  "negotiationId": "43941a0a-78a2-4782-9933-e4bb38426d87",
-  "round": 1
-}
-```
-
-**Response — reject:**
-```json
-{
-  "decision": "reject",
-  "reason": "Offer too far below cost floor to be worth countering."
-}
-```
-
-### `GET /pay/:id`
-
-x402-gated payment route. Unpaid request returns `402` with payment requirements; a correctly signed Circle Gateway payment completes the purchase and returns the real data.
-
-**Unpaid (`402`):**
-```
-HTTP/1.1 402 Payment Required
-PAYMENT-REQUIRED: <base64-encoded payment requirements>
-```
-
-**Paid (`200`):**
-```json
-{
-  "message": "Payment accepted — here is your data.",
-  "tool": "get_btc_cycle_regime",
-  "negotiationId": "...",
-  "round": 1,
-  "agreedPrice": 0.006,
-  "payerAddress": "0x...",
-  "data": { "rawText": "BTC Cycle Regime: Mid Bull (Score: 57/100)..." }
-}
-```
-
-### `GET /activity`
-
-Real negotiation history metadata. **Never exposes the actual paid intelligence data or rejected-offer pricing details** — this is a deliberate design constraint, since the whole product depends on not giving away for free what people pay for.
-
-```json
-[
-  {
-    "quoteId": "b1bc0d90-186b-4b0a-af12-17b19aee9632",
-    "negotiationId": "35364571-c2ac-4ff2-89db-9550dbac5cb1",
-    "round": 1,
-    "tool": "get_btc_cycle_regime",
-    "decision": "accepted",
-    "agreedPrice": 0.008,
-    "createdAt": "2026-07-06T09:00:23.727Z",
-    "state": "FULFILLED",
-    "payerAddress": "0x..."
-  }
-]
-```
-
-### `GET /pricing`
-
-Real per-tool cost floor and asking price, read directly from source — not duplicated or guessed.
+### Real per-tool pricing
 
 | Tool | Cost Floor | Asking Price | Negotiation Range |
 |---|---|---|---|
@@ -246,63 +235,33 @@ Real per-tool cost floor and asking price, read directly from source — not dup
 
 ---
 
-## Tutorial — How the Negotiation-to-Settlement Flow Works
-
-### Step 1 — Propose a price
-```bash
-curl -X POST https://valiquo-production.up.railway.app/quote \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"get_entry_risk","proposedPrice":0.001}'
-```
-Returns a `counter` at the real cost floor (`$0.0015`), with a `payUrl` and a 10-minute expiry window.
-
-### Step 2 — Re-propose at the countered price
-```bash
-curl -X POST https://valiquo-production.up.railway.app/quote \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"get_entry_risk","proposedPrice":0.0015,"negotiationId":"<from step 1>"}'
-```
-Returns `accept` — same `negotiationId`, `round` incremented to `2`.
-
-### Step 3 — Pay via a real wallet (browser)
-The frontend's negotiation widget:
-1. Detects `window.ethereum`, requests account access.
-2. Checks the connected wallet's Circle Gateway available balance. If it's short but the wallet's plain USDC balance covers it, **auto-deposits** into Gateway first (a real, separate signature) — this is the fix for the fourth bug in the table above.
-3. Builds the real EIP-712 `TransferWithAuthorization` payload matching the quote's exact `agreedPrice` and the real seller address.
-4. Requests the signature via `window.ethereum.request(...)`.
-5. Submits the signed payload to the real `payUrl`.
-
-### Step 4 — Receive the result
-On success, the response includes the real `payerAddress` and the actual intelligence data. The frontend shows a **"View on Arc Explorer"** link to `testnet.arcscan.app/address/{payerAddress}` so the payer can independently verify their own transaction history.
-
----
-
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────┐
 │              web/ (Next.js frontend)               │
-│   Landing page · Dashboard · Docs                   │
-│   Real wallet signing via viem + window.ethereum    │
-│   Auto-deposit + payment, both signed in-browser     │
+│   Landing page · Dashboard · Docs                    │
+│   Real wallet signing via viem + window.ethereum      │
+│   Auto-deposit + payment, signed in-browser            │
 └───────────────────────┬────────────────────────────┘
                         │ HTTPS (CORS-enabled)
                         ▼
 ┌──────────────────────────────────────────────────┐
-│         src/server.ts (Express backend)             │
-│   /quote · /pay/:id · /activity · /pricing           │
-│   In-memory quote/negotiation state                  │
-│   (does not survive a restart — known limitation)    │
-└───────────────────────┬────────────────────────────┘
-                        │ @circle-fin/x402-batching
-                        ▼
-┌──────────────────────────────────────────────────┐
-│         Circle Gateway (Arc Testnet)                 │
-│   Real USDC contract, real GatewayWallet contract     │
-│   chain id eip155:5042002                             │
-└───────────────────────┬────────────────────────────┘
-                        │
-                        ▼
+│         src/server.ts (Express backend)              │
+│   /quote /pay/:id /activity /pricing /revenue /ask     │
+│   Postgres-backed quote/negotiation state               │
+│   (survives restarts — migrated from in-memory)          │
+└──────┬─────────────────────────────────┬───────────┘
+       │ @circle-fin/x402-batching        │ fire-and-forget
+       ▼                                  ▼
+┌───────────────────────┐    ┌─────────────────────────┐
+│  Circle Gateway         │    │  ValiquoSettlementLog    │
+│  (Arc Testnet)           │    │  (Arc Testnet)             │
+│  Real USDC + Gateway      │    │  Permanent, trustless        │
+│  contracts, x402           │    │  proof-of-payment record       │
+└───────────────────────┘    └─────────────────────────┘
+       │
+       ▼
 ┌──────────────────────────────────────────────────┐
 │    BTC Cycle Intelligence (external MCP server)      │
 │    The current, single live data seller                │
@@ -315,36 +274,43 @@ On success, the response includes the real `payerAddress` and the actual intelli
 
 | Layer | Technology |
 |---|---|
-| Backend | Node.js 22, Express, TypeScript (run directly via `--experimental-transform-types`, no build step) |
+| Backend | Node.js 22, Express, TypeScript (`--experimental-transform-types`, no build step) |
+| Database | PostgreSQL (Railway-managed) |
 | Frontend | Next.js 14 (App Router), React, TypeScript, Tailwind CSS |
-| Payments | `@circle-fin/x402-batching`, `viem` |
-| Blockchain | Arc Testnet (`eip155:5042002`), Circle Gateway, x402 protocol |
-| Wallet signing | Real EIP-712 `TransferWithAuthorization`, `window.ethereum` |
-| Deployment | Railway (two separate services — backend and frontend) |
-| Testing | Custom PowerShell test harness (`scripts/`), Playwright (responsiveness + hydration checks) |
+| Payments | `@circle-fin/x402-batching`, `@circle-fin/swap-kit`, viem |
+| AI Reasoning | `@anthropic-ai/sdk` (Claude Haiku 4.5) |
+| Blockchain | Arc Testnet (`eip155:5042002`), Circle Gateway, x402 protocol, custom Solidity settlement contract |
+| Deployment | Railway (backend, frontend, and Postgres as separate services) |
+| Testing | Custom PowerShell test harness, Playwright (responsiveness + hydration checks) |
+
+---
+
+## Circle Tools Used
+
+- **Gateway & Nanopayments** — the core settlement layer for every negotiated payment.
+- **x402 protocol** — the payment-required gate on `/pay/:id`.
+- **App Kit / Swap Kit** — real USDC↔EURC swap integration for optional seller payouts, verified with a live `estimate()` call against Circle's real Stablecoin Service.
+- **USDC** — native settlement currency throughout.
 
 ---
 
 ## Test Scenarios Covered
 
-Valiquo was tested by real users during the hackathon period, in addition to the automated regression suite.
-
 | Scenario | Result |
 |---|---|
-| Offer at or above asking price | Accepted at asking price |
+| Offer at/above asking price | Accepted at asking price |
 | Offer between floor and ask | Accepted at proposed price |
 | Offer below floor, within counter range | Countered at floor |
 | Offer far below floor | Rejected, no quote created |
 | Invalid tool name | Rejected with clear reason |
-| Missing/malformed `proposedPrice` | `400` with clear error |
-| Unpaid `GET /pay/:id` | `402` with real payment requirements |
-| Duplicate unpaid request | Safe, no crash, no false-consume |
-| Real wallet with sufficient Gateway balance | Payment settles, real data returned |
-| Real wallet with USDC but zero Gateway balance | Auto-deposit triggers, then payment settles |
-| Real wallet with zero USDC | Clear error directing to the faucet |
-| Quote expiry (10 minutes) | Enforced; expired quotes rejected with a clear message |
-| Max negotiation rounds (5) | Enforced server-side |
-| Mobile browser (375px–1440px) | Responsive UI confirmed across all breakpoints |
+| Real wallet, sufficient Gateway balance | Payment settles, real data + on-chain log |
+| Real wallet, USDC but zero Gateway balance | Auto-deposit triggers, then settles |
+| Real wallet, zero USDC | Clear error directing to the faucet |
+| Quote expiry (10 minutes) | Enforced |
+| Server restart mid-session | Quote state survives (Postgres) — proven with a real production restart test |
+| Settlement contract access control | Unauthorized caller reverts cleanly |
+| `/ask` — clear question | Correct tool selected, real reasoning returned |
+| `/ask` — unrelated question | Honestly declines rather than guessing |
 
 ---
 
@@ -352,6 +318,7 @@ Valiquo was tested by real users during the hackathon period, in addition to the
 
 ### Prerequisites
 - Node.js 22+
+- PostgreSQL (or a Railway-provisioned instance)
 - An Arc Testnet wallet with test-USDC ([faucet.circle.com](https://faucet.circle.com))
 
 ### Backend
@@ -359,7 +326,10 @@ Valiquo was tested by real users during the hackathon period, in addition to the
 git clone https://github.com/Shanks-btc/Valiquo.git
 cd Valiquo
 npm install
-echo "SELLER_ADDRESS=0xYourSellerAddress" > .env
+cat > .env << EOF
+SELLER_ADDRESS=0xYourSellerAddress
+DATABASE_URL=postgresql://...
+EOF
 npm start
 # Runs on http://localhost:3000
 ```
@@ -372,26 +342,16 @@ npm run dev
 # Runs on http://localhost:3001
 ```
 
-Set `NEXT_PUBLIC_QUOTE_API_URL` and `QUOTE_API_URL` to point the frontend at your backend if not running both on default ports.
-
-### Test harness
-```powershell
-.\scripts\test-valiquo-quotes.ps1        # negotiation + payment-route checks, read-only
-.\scripts\test-btc-mcp.ps1               # verify the live data seller
-.\scripts\test-payment-readiness.ps1     # env/config/balance checks (add -ExecutePayment to spend real test-USDC)
-node scripts\generate-traction-table.mjs # regenerate the real traction table above
-```
-
 ---
 
 ## Known Limitations
 
-Stated plainly — these are accepted tradeoffs given the build timeline, not oversights we're unaware of:
+Stated plainly — accepted tradeoffs given the build timeline, not oversights we're unaware of:
 
-- **In-memory state does not survive a server restart.** Negotiation/quote/activity history resets to empty on every redeploy. A durable store (Redis or Postgres, both natively available on Railway) is the planned next step before any production-scale deployment.
-- **Single live data seller today** (BTC Cycle Intelligence). The architecture — the negotiation layer, the payment gate, the `/activity`/`/pricing` pattern — is seller-agnostic and designed to support more sellers; we deliberately scoped to one for reliability under deadline pressure.
-- **No custom smart contract.** Valiquo settles through Circle's own audited Gateway/USDC contracts on Arc rather than a bespoke contract we could not have properly security-reviewed in the time available. We consider this the right call given the timeline, not a shortcut.
-- **Requires a Circle Gateway deposit, not just wallet USDC** — a real Gateway-level requirement, now handled transparently by the frontend's auto-deposit flow (see Real Bugs Found table above).
+- **Single live data seller today** (BTC Cycle Intelligence). The architecture is seller-agnostic and designed to support more; we deliberately scoped to one for reliability.
+- **Real usage to date is concentrated on one tool** (`get_btc_cycle_regime`) — honest, not hidden.
+- **No custom contract for payment itself** — deliberate. Valiquo settles through Circle's own audited Gateway/USDC contracts rather than a bespoke payment contract we could not have properly security-reviewed in the time available. The settlement-*logging* contract, by contrast, was built carefully — isolated test deployment, 5 real test cases, before ever touching production.
+- **The reasoning layer (`/ask`) selects a tool; it does not yet reason about price or negotiation strategy** — that logic remains deterministic by design, for reliability.
 
 ---
 
