@@ -2,9 +2,10 @@
  * Valiquo - a negotiated-price payment layer in front of live financial
  * and on-chain intelligence data, settled via Circle Gateway/x402 on Arc.
  *
- * Two sellers: BTC Cycle Intelligence (5 tools) and Short Squeeze
- * Intelligence (2 priced tools - see the TOOLS map comment for why only 2
- * of its 5 MCP tool names are separately priced).
+ * Three sellers: BTC Cycle Intelligence (5 tools), Short Squeeze
+ * Intelligence (2 priced tools), and Analyst Momentum (3 priced tools) -
+ * see the TOOLS map comments for why each seller's real MCP tool count is
+ * larger than the number of separately priced entries.
  */
 
 import express from "express";
@@ -35,6 +36,9 @@ const BTC_CYCLE_MCP_URL =
 
 const SHORT_SQUEEZE_MCP_URL =
   process.env.SHORT_SQUEEZE_MCP_URL ?? "https://short-squeeze-intelligence-production-6b31.up.railway.app/mcp";
+
+const ANALYST_MOMENTUM_MCP_URL =
+  process.env.ANALYST_MOMENTUM_MCP_URL ?? "https://analyst-momentum-production-4a1d.up.railway.app/mcp";
 
 interface ToolConfig {
   mcpUrl: string;
@@ -74,6 +78,39 @@ const TOOLS: Record<string, ToolConfig> = {
     costFloor: 0.002,
     askPrice: 0.005,
     requiredArgs: ["ticker1", "ticker2"],
+  },
+  // Analyst Momentum exposes 8 MCP tool names, but only 3 are priced here.
+  // Confirmed live against the seller's own source (Analyst momentum/src/
+  // index.js): tools/call routes get_analyst_consensus, get_analyst_price_
+  // target, get_sentiment_shift, get_analyst_conviction, and get_bearish_
+  // reversal_signal all through the identical getAnalystMomentum(ticker)
+  // call and return the same structuredContent for the same ticker - only
+  // the human-readable text summary differs per name. Same reasoning as
+  // Short Squeeze's unpriced duplicates: pricing them separately would
+  // charge for the same output under different names. get_analyst_momentum
+  // (the full composite), compare_analyst_momentum, and
+  // screen_analyst_momentum each do genuinely distinct computation, so
+  // those are the 3 priced here. askPrice for get_analyst_momentum is the
+  // seller's own declared _meta.pricing.queryUsd ($0.07) - used directly,
+  // not invented; the other two are scaled off it using this map's
+  // existing flagship/compare price ratios.
+  get_analyst_momentum: {
+    mcpUrl: ANALYST_MOMENTUM_MCP_URL,
+    costFloor: 0.025,
+    askPrice: 0.07,
+    requiredArgs: ["ticker"],
+  },
+  compare_analyst_momentum: {
+    mcpUrl: ANALYST_MOMENTUM_MCP_URL,
+    costFloor: 0.018,
+    askPrice: 0.045,
+    requiredArgs: ["ticker1", "ticker2"],
+  },
+  screen_analyst_momentum: {
+    mcpUrl: ANALYST_MOMENTUM_MCP_URL,
+    costFloor: 0.03,
+    askPrice: 0.08,
+    requiredArgs: ["tickers"],
   },
 };
 
@@ -280,7 +317,14 @@ function decide(
     return { decision: "reject", price: 0, reason: `Unknown tool: ${tool}` };
   }
   if (config.requiredArgs) {
-    const missing = config.requiredArgs.filter((key) => typeof args[key] !== "string" || !args[key]);
+    // Most required args are single ticker strings, but screen_analyst_momentum's
+    // "tickers" is an array (2-5 symbols) - a required arg is missing if it's an
+    // empty/blank string, or an empty array.
+    const missing = config.requiredArgs.filter((key) => {
+      const value = args[key];
+      if (Array.isArray(value)) return value.length === 0;
+      return typeof value !== "string" || !value;
+    });
     if (missing.length > 0) {
       return { decision: "reject", price: 0, reason: `Missing required argument(s): ${missing.join(", ")}` };
     }
@@ -712,7 +756,7 @@ async function main() {
   app.listen(PORT, () => {
     console.log(`Valiquo listening on http://localhost:${PORT}`);
     console.log(`Seller: ${SELLER_ADDRESS}`);
-    console.log(`Wrapping MCP tool servers: ${BTC_CYCLE_MCP_URL}, ${SHORT_SQUEEZE_MCP_URL}`);
+    console.log(`Wrapping MCP tool servers: ${BTC_CYCLE_MCP_URL}, ${SHORT_SQUEEZE_MCP_URL}, ${ANALYST_MOMENTUM_MCP_URL}`);
   });
 }
 
