@@ -26,6 +26,7 @@ export const SELLER_TOOLS: Record<string, string[]> = {
     "get_nupl_sentiment",
   ],
   "Short Squeeze Intelligence": ["get_squeeze_risk", "compare_squeeze_risk"],
+  "Analyst Momentum": ["get_analyst_momentum", "compare_analyst_momentum", "screen_analyst_momentum"],
 };
 
 export interface ActivityRecord {

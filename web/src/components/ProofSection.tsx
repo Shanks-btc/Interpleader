@@ -83,16 +83,21 @@ export default async function ProofSection() {
           These cards are rendered from <code>GET /activity</code> on the running
           Valiquo server — not static demo data.
         </p>
+      </div>
 
-        <div className="mt-10 grid w-full max-w-3xl min-w-0 grid-cols-1 gap-6 sm:grid-cols-2">
-          {Object.entries(SELLER_TOOLS).map(([providerName, tools]) => (
-            <ProviderCard
-              key={providerName}
-              providerName={providerName}
-              record={pickLatestSettlement(activity, tools)}
-            />
-          ))}
-        </div>
+      {/* Own (wider) width from the heading text above - a fixed grid-cols-2
+          here would cap out at 2 providers forever. sm:grid-cols-2 keeps two
+          per row on tablet regardless of count; lg:grid-cols-3 spreads out
+          to one row once there's room, and gracefully wraps to a 2nd row
+          for a 4th+ provider rather than assuming an exact count. */}
+      <div className="mx-auto mt-10 grid w-full max-w-5xl min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {Object.entries(SELLER_TOOLS).map(([providerName, tools]) => (
+          <ProviderCard
+            key={providerName}
+            providerName={providerName}
+            record={pickLatestSettlement(activity, tools)}
+          />
+        ))}
       </div>
     </section>
   );
