@@ -24,8 +24,35 @@ const FALLBACK_TOOLS: ToolPricing[] = [
 // "ticker1" -> "Ticker 1", "ticker" -> "Ticker" - generic enough for any
 // future requiredArgs name without a per-arg label table.
 function argLabel(key: string): string {
+  if (key === "tickers") return "Tickers (comma-separated, 2-5)";
   const spaced = key.replace(/(\d+)$/, " $1");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+// screen_analyst_momentum's "tickers" is the one array-type required arg
+// among all 10 tools today (everything else is a single ticker string) -
+// stored in argValues as one raw comma-separated string like the other
+// text inputs, split into a real array only when building the /quote
+// payload. isArgFilled mirrors this for client-side validation so the
+// submit button doesn't enable on e.g. a single ticker with no comma.
+function splitTickers(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function isArgFilled(key: string, raw: string): boolean {
+  if (key === "tickers") return splitTickers(raw).length >= 2;
+  return !!raw.trim();
+}
+
+function buildArgsPayload(rawArgs: Record<string, string>): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rawArgs)) {
+    payload[key] = key === "tickers" ? splitTickers(value) : value;
+  }
+  return payload;
 }
 
 const PRESETS: Array<{ label: string; tool: string; price: string; args?: Record<string, string> }> = [
@@ -49,6 +76,12 @@ const PRESETS: Array<{ label: string; tool: string; price: string; args?: Record
     tool: "get_squeeze_risk",
     price: "0.008",
     args: { ticker: "GME" },
+  },
+  {
+    label: "Accept at ask — Analyst Momentum (PLTR) @ $0.07",
+    tool: "get_analyst_momentum",
+    price: "0.07",
+    args: { ticker: "PLTR" },
   },
 ];
 
@@ -103,7 +136,7 @@ export default function NegotiationSection() {
 
   const selectedTool = tools.find((t) => t.tool === tool);
   const requiredArgs = selectedTool?.requiredArgs ?? [];
-  const missingArgs = requiredArgs.filter((key) => !argValues[key]?.trim());
+  const missingArgs = requiredArgs.filter((key) => !isArgFilled(key, argValues[key] ?? ""));
 
   async function appendLine(text: string) {
     setLines((prev) => [...prev, text]);
@@ -116,7 +149,7 @@ export default function NegotiationSection() {
     setArgValues(preset.args ?? {});
   }
 
-  async function runNegotiation(selectedTool: string, startPrice: number, args: Record<string, string>) {
+  async function runNegotiation(selectedTool: string, startPrice: number, args: Record<string, unknown>) {
     setPending(true);
     setPayState("idle");
     setAgreedPrice(null);
@@ -193,7 +226,7 @@ export default function NegotiationSection() {
     e.preventDefault();
     const parsed = Number(price);
     if (Number.isNaN(parsed) || parsed < 0 || pending || missingArgs.length > 0) return;
-    await runNegotiation(tool, parsed, argValues);
+    await runNegotiation(tool, parsed, buildArgsPayload(argValues));
   }
 
   async function handlePay() {
@@ -287,7 +320,13 @@ export default function NegotiationSection() {
                     <input
                       id={`arg-${key}`}
                       type="text"
-                      placeholder={key.startsWith("ticker") ? "e.g. GME" : undefined}
+                      placeholder={
+                        key === "tickers"
+                          ? "e.g. PLTR, NVDA, AMD, TSLA"
+                          : key.startsWith("ticker")
+                          ? "e.g. GME"
+                          : undefined
+                      }
                       value={argValues[key] ?? ""}
                       onChange={(e) =>
                         setArgValues((prev) => ({ ...prev, [key]: e.target.value.toUpperCase() }))

@@ -8,6 +8,9 @@ export const TOOL_LABELS: Record<string, string> = {
   get_nupl_sentiment: "NUPL Sentiment",
   get_squeeze_risk: "Squeeze Risk",
   compare_squeeze_risk: "Compare Squeeze Risk",
+  get_analyst_momentum: "Analyst Momentum",
+  compare_analyst_momentum: "Compare Analyst Momentum",
+  screen_analyst_momentum: "Screen Analyst Momentum",
 };
 
 // Which tools belong to which seller - /pricing doesn't expose a provider
