@@ -200,6 +200,7 @@ Full interactive documentation: [valiquo.xyz/docs](https://valiquo.xyz/docs)
 | `/pricing` | GET | Real per-tool cost floor and asking price for all 5 tools. |
 | `/revenue` | GET | Real seller Gateway balance — genuine settled earnings, honestly labeled (a live balance, not a lifetime total). |
 | `/ask` | POST | LLM-driven tool selection from a natural-language question. |
+| `/a2mcp` | POST | Fixed-price A2MCP endpoint (JSON-RPC `tools/list` / `tools/call`), settled via OKX's x402 SDK on X Layer — see below. |
 
 ### Real request/response example
 
@@ -230,6 +231,29 @@ curl -X POST https://valiquo-production.up.railway.app/quote \
 | `get_lth_behavior` | $0.0015 | $0.004 | 63% |
 | `compare_to_2021_top` | $0.002 | $0.005 | 60% |
 | `get_nupl_sentiment` | $0.0015 | $0.004 | 63% |
+
+---
+
+## Fixed-price A2MCP endpoint (OKX x402 on X Layer)
+
+Alongside the negotiated flow above, `POST /a2mcp` is a second, independent payment rail over the exact same tool catalog (`src/tools.ts`) — fixed price, no negotiation, settled via OKX's real `@okxweb3/x402-*` SDK on **X Layer** (`eip155:196`) instead of Circle Gateway on Arc. It's a single genuine JSON-RPC endpoint, mirroring the same `tools/list` / `tools/call` shape this repo already speaks to reach its own upstream seller MCP servers:
+
+- **`tools/list`** — always free. Returns the real tool catalog with each tool's fixed price (`TOOLS[name].askPrice`, the same number the negotiated flow treats as its asking price — never a second, invented price list).
+- **`tools/call`** — priced dynamically per request, resolved from the same `TOOLS` map, and settled in USDT0 (X Layer's default stablecoin under OKX's SDK). An unknown tool name or a missing required argument is rejected with `403` *before* any price is even built — never a payable 402 for an invalid request. On successful payment, fulfillment reuses the exact same `callMcpTool()` this repo's negotiated flow already has real, proven traction on.
+
+```bash
+curl -X POST https://valiquo-production.up.railway.app/a2mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Required environment variables (unset → the route is skipped with a clear startup warning; the rest of the server, including the negotiated flow above, keeps running):
+
+| Variable | Purpose |
+|---|---|
+| `OKX_API_KEY` / `OKX_SECRET_KEY` / `OKX_PASSPHRASE` | OKX Developer Portal facilitator credentials (HMAC-SHA256 auth against `https://web3.okx.com/api/v6/pay/x402`). |
+| `OKX_SELLER_ADDRESS` | X Layer payout address — deliberately separate from `SELLER_ADDRESS` (Arc Testnet), so mainnet fund custody stays isolated from the existing Circle Gateway seller key. |
+| `OKX_NETWORK` | Optional. Defaults to `eip155:196` (X Layer mainnet). Set to `eip155:1952` (X Layer testnet) to validate this rail with test funds first. |
 
 ---
 
@@ -275,9 +299,9 @@ curl -X POST https://valiquo-production.up.railway.app/quote \
 | Backend | Node.js 22, Express, TypeScript (`--experimental-transform-types`, no build step) |
 | Database | PostgreSQL (Railway-managed) |
 | Frontend | Next.js 14 (App Router), React, TypeScript, Tailwind CSS |
-| Payments | `@circle-fin/x402-batching`, `@circle-fin/swap-kit`, viem |
+| Payments | `@circle-fin/x402-batching`, `@circle-fin/swap-kit`, `@okxweb3/x402-*`, viem |
 | AI Reasoning | `@anthropic-ai/sdk` (Claude Haiku 4.5) |
-| Blockchain | Arc Testnet (`eip155:5042002`), Circle Gateway, x402 protocol, custom Solidity settlement contract |
+| Blockchain | Arc Testnet (`eip155:5042002`) via Circle Gateway, X Layer (`eip155:196`) via OKX x402, custom Solidity settlement contract |
 | Deployment | Railway (backend, frontend, and Postgres as separate services) |
 | Testing | Custom PowerShell test harness, Playwright (responsiveness + hydration checks) |
 
@@ -327,6 +351,12 @@ npm install
 cat > .env << EOF
 SELLER_ADDRESS=0xYourSellerAddress
 DATABASE_URL=postgresql://...
+# Optional - enables POST /a2mcp (see "Fixed-price A2MCP endpoint" above).
+# Omit entirely to run with just the negotiated flow above.
+OKX_API_KEY=
+OKX_SECRET_KEY=
+OKX_PASSPHRASE=
+OKX_SELLER_ADDRESS=
 EOF
 npm start
 # Runs on http://localhost:3000
