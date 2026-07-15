@@ -18,6 +18,10 @@ import cors from "cors";
 import { mountA2mcp } from "./okxA2mcp.ts";
 
 const app = express();
+// Railway terminates TLS at its edge and forwards internally over plain
+// HTTP - without this, req.protocol (and so the 402 payload's resource.url)
+// reports "http" even though the public endpoint is genuinely HTTPS-only.
+app.set("trust proxy", true);
 app.use(express.json());
 // Same CORS config as src/server.ts, same reason: PAYMENT-REQUIRED and
 // PAYMENT-RESPONSE need to be readable by browser JS across origins.
@@ -25,6 +29,13 @@ app.use(cors({ exposedHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE"] }));
 
 app.get("/", (_req, res) => {
   res.json({ service: "Interpleader A2MCP (OKX x402 on X Layer only)", endpoints: ["POST /a2mcp"] });
+});
+
+// For an external uptime monitor (e.g. UptimeRobot) - deliberately cheap and
+// unauthenticated, no facilitator/network calls, just confirms the process
+// itself is up and serving requests.
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", service: "interpleader-a2mcp" });
 });
 
 mountA2mcp(app);
