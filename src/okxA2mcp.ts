@@ -109,13 +109,16 @@ export function mountA2mcp(app: express.Express): void {
 
   const httpServer = new x402HTTPResourceServer(resourceServer, routes as any).onProtectedRequest(async (context: any) => {
     const body = getA2mcpBody(context);
-    if (body.method === "tools/list") {
+    if (body.method === "initialize" || body.method === "tools/list") {
       // Real discovery is free - grantAccess skips payment entirely rather
-      // than charging an agent just to see the price list.
+      // than charging an agent just to see the price list. initialize is
+      // the MCP spec's session-handshake method ("MUST be the first
+      // interaction") - free for the same reason tools/list is, since
+      // neither one ever touches priced data.
       return { grantAccess: true };
     }
     if (body.method !== "tools/call") {
-      return { abort: true, reason: "Unsupported method: expected tools/list or tools/call" };
+      return { abort: true, reason: "Unsupported method: expected initialize, tools/list, or tools/call" };
     }
     const toolName = body.params?.name;
     const config = toolName ? TOOLS[toolName] : undefined;
@@ -151,6 +154,25 @@ export function mountA2mcp(app: express.Express): void {
   app.post("/a2mcp", async (req: express.Request, res: express.Response) => {
     const body = req.body as A2mcpRequestBody;
     const id = body.id ?? null;
+
+    if (body.method === "initialize") {
+      // Spec-required fields only (capabilities, protocolVersion,
+      // serverInfo) - stateless on purpose, since every real call on this
+      // rail is an independent, fixed-price HTTP request with no session
+      // to actually set up (matches how the real upstream seller MCP
+      // servers this repo already calls via callMcpTool() work - none of
+      // them require this handshake either, confirmed live).
+      res.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          protocolVersion: "2025-06-18",
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: "interpleader-a2mcp", version: "1.0.0" },
+        },
+      });
+      return;
+    }
 
     if (body.method === "tools/list") {
       res.json({ jsonrpc: "2.0", id, result: { tools: toolCatalogForList() } });
