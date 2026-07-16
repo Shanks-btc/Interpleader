@@ -102,7 +102,7 @@ export function mountA2mcp(app: express.Express): void {
           return `$${config!.askPrice.toFixed(6)}`;
         },
       },
-      description: "Fixed-price A2MCP tool calls over Valiquo's real data catalog (OKX x402 on X Layer).",
+      description: "Fixed-price A2MCP tool calls over Interpleader's real data catalog (OKX x402 on X Layer).",
       mimeType: "application/json",
     },
   };
